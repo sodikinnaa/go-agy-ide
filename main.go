@@ -152,19 +152,9 @@ func checkOAuthTokenExists() bool {
 	return err == nil
 }
 
-// Verifikasi auth (kudu nduweni session cookie LAN token Google OAuth Antigravity aktif)
+// Verifikasi auth (kudu nduweni token Google OAuth Antigravity aktif ing mesin)
 func checkAuth(r *http.Request) bool {
-	if !checkOAuthTokenExists() {
-		return false
-	}
-	if sessionToken == "" {
-		return false
-	}
-	cookie, err := r.Cookie("session_token")
-	if err != nil {
-		return false
-	}
-	return cookie.Value == sessionToken
+	return checkOAuthTokenExists()
 }
 
 // Handler static html utama
@@ -334,16 +324,7 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	select {
 	case err := <-done:
 		if err != nil {
-			// Cek yen token kasil digawe sanajan ana exit error
 			if checkOAuthTokenExists() {
-				sessionToken = generateRandomPassword(32)
-				http.SetCookie(w, &http.Cookie{
-					Name:     "session_token",
-					Value:    sessionToken,
-					Path:     "/",
-					HttpOnly: true,
-					MaxAge:   86400 * 7,
-				})
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("Sukses mlebu"))
 				return
@@ -358,14 +339,6 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if checkOAuthTokenExists() {
-		sessionToken = generateRandomPassword(32)
-		http.SetCookie(w, &http.Cookie{
-			Name:     "session_token",
-			Value:    sessionToken,
-			Path:     "/",
-			HttpOnly: true,
-			MaxAge:   86400 * 7,
-		})
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Sukses mlebu"))
 	} else {
@@ -373,7 +346,7 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// API POST /api/auth/logout - Mbusak token Google agy ing server & cookie lokal
+// API POST /api/auth/logout - Mbusak token Google agy ing server
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
@@ -386,14 +359,6 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 		os.Remove(tokenPath) // Hapus file token resmi
 	}
 
-	sessionToken = "" // Invalidate session
-	http.SetCookie(w, &http.Cookie{
-		Name:     "session_token",
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		MaxAge:   -1,
-	})
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Sukses logout"))
 }
