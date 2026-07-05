@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -66,12 +67,18 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 }
 
 func TestHandleAuthStatus(t *testing.T) {
+	// Bypass password check for this test
+	originalPwd := secretPassword
+	secretPassword = ""
+	defer func() { secretPassword = originalPwd }()
+
 	// Set up request and recorder
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
 	rr := httptest.NewRecorder()
 
-	// Run handler
-	handleAuthStatus(rr, req)
+	// Run handler through middleware
+	handler := authMiddleware(handleAuthStatus)
+	handler.ServeHTTP(rr, req)
 
 	// Verify response status
 	if rr.Code != http.StatusOK {
@@ -91,6 +98,11 @@ func TestHandleAuthStatus(t *testing.T) {
 }
 
 func TestHandleListFilesUnauthorized(t *testing.T) {
+	// Bypass password check for this test
+	originalPwd := secretPassword
+	secretPassword = ""
+	defer func() { secretPassword = originalPwd }()
+
 	// Verify that listing files returns 401 when the server is not authenticated.
 	// Temporarily simulate missing token
 	homeDir, err := os.UserHomeDir()
@@ -122,5 +134,52 @@ func TestHandleListFilesUnauthorized(t *testing.T) {
 	// Verify response status is 401
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401, got %d", rr.Code)
+	}
+}
+
+func TestHandlePasswordAuth(t *testing.T) {
+	// Set mock password
+	originalPwd := secretPassword
+	secretPassword = "supersecretpassword123"
+	defer func() { secretPassword = originalPwd }()
+
+	// 1. Test Incorrect Password
+	reqIncorrect := httptest.NewRequest(http.MethodPost, "/api/auth/pwd", strings.NewReader("password=wrongpassword"))
+	reqIncorrect.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrIncorrect := httptest.NewRecorder()
+
+	handlePasswordAuth(rrIncorrect, reqIncorrect)
+
+	if rrIncorrect.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401 for wrong password, got %d", rrIncorrect.Code)
+	}
+
+	// 2. Test Correct Password
+	reqCorrect := httptest.NewRequest(http.MethodPost, "/api/auth/pwd", strings.NewReader("password=supersecretpassword123"))
+	reqCorrect.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrCorrect := httptest.NewRecorder()
+
+	handlePasswordAuth(rrCorrect, reqCorrect)
+
+	if rrCorrect.Code != http.StatusOK {
+		t.Errorf("expected status 200 for correct password, got %d", rrCorrect.Code)
+	}
+
+	// Check if session cookie is set
+	cookies := rrCorrect.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session_password" {
+			sessionCookie = c
+			break
+		}
+	}
+
+	if sessionCookie == nil {
+		t.Fatalf("expected session_password cookie to be set")
+	}
+
+	if sessionCookie.Value != passwordSessionToken {
+		t.Errorf("expected cookie value to match session token, got %s", sessionCookie.Value)
 	}
 }

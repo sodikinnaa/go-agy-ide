@@ -21,6 +21,9 @@ var embeddedIndexHTML string
 //go:embed login.html
 var embeddedLoginHTML string
 
+//go:embed login-pwd.html
+var embeddedLoginPwdHTML string
+
 type FileInfo struct {
 	Path  string `json:"path"`
 	Name  string `json:"name"`
@@ -43,7 +46,10 @@ type WorkspaceSettings struct {
 var serverStartDir string
 var activeWorkspaceDir string
 var workspacesList []string
-var sessionToken string = ""
+
+// Security and Authentication state variables
+var secretPassword string
+var passwordSessionToken string = ""
 
 // Global variables for active Google OAuth authentication process
 var activeAuthCmd *exec.Cmd
@@ -66,15 +72,20 @@ func main() {
 	// Load workspaces
 	loadWorkspaces()
 
+	// Load or generate password for access control
+	loadPassword()
+
 	// Routes wrapped with authMiddleware
 	http.HandleFunc("/", authMiddleware(handleIndex))
 	http.HandleFunc("/login", authMiddleware(handleLoginPage))
+	http.HandleFunc("/login-pwd", authMiddleware(handleLoginPwdPage))
 	
 	// Authentication APIs
 	http.HandleFunc("/api/auth/start", authMiddleware(handleAuthStart))
 	http.HandleFunc("/api/auth/submit", authMiddleware(handleAuthSubmit))
 	http.HandleFunc("/api/auth/logout", authMiddleware(handleLogout))
 	http.HandleFunc("/api/auth/status", authMiddleware(handleAuthStatus))
+	http.HandleFunc("/api/auth/pwd", authMiddleware(handlePasswordAuth))
 	
 	// Workspace and project files APIs
 	http.HandleFunc("/api/files", authMiddleware(handleListFiles))
@@ -93,7 +104,31 @@ func main() {
 	}
 }
 
-// Middleware Keamanan Pusat
+// Load password saka environment variable utawa password.txt
+func loadPassword() {
+	secretPassword = os.Getenv("PASSWORD")
+	if secretPassword != "" {
+		log.Printf("[SECURITY] Sandi keamanan dimuat saka env variable PASSWORD\n")
+		return
+	}
+
+	configPath := filepath.Join(serverStartDir, "password.txt")
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		secretPassword = strings.TrimSpace(string(data))
+		if secretPassword != "" {
+			log.Printf("[SECURITY] Sandi keamanan dimuat saka %s\n", configPath)
+			return
+		}
+	}
+
+	// Generate random 8 character secure password
+	secretPassword = generateRandomPassword(8)
+	os.WriteFile(configPath, []byte(secretPassword), 0600)
+	log.Printf("[SECURITY] Sandi keamanan login acak digawe: %s (disimpen ing password.txt)\n", secretPassword)
+}
+
+// Middleware Keamanan Pusat multi-layer (Password + Google OAuth)
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Bypass CORS preflight requests
@@ -102,28 +137,63 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		isPublicAPI := r.URL.Path == "/api/auth/start" || r.URL.Path == "/api/auth/submit" || r.URL.Path == "/api/auth/status"
-		isLoginPage := r.URL.Path == "/login"
+		isPublicAPI := r.URL.Path == "/api/auth/pwd"
+		isPasswordPage := r.URL.Path == "/login-pwd"
 
-		isAuthenticated := checkOAuthTokenExists()
+		// 1. LAYER 1: Verifikasi Sandi Keamanan
+		isPasswordAuthPassed := false
+		if secretPassword == "" {
+			isPasswordAuthPassed = true
+		} else {
+			cookie, err := r.Cookie("session_password")
+			if err == nil && passwordSessionToken != "" && cookie.Value == passwordSessionToken {
+				isPasswordAuthPassed = true
+			}
+		}
 
-		if !isAuthenticated {
-			// Yen durung login lan nyoba ngakses private API -> bali 401 Unauthorized
+		if !isPasswordAuthPassed {
+			// Yen durung verifikasi sandi lan ngakses API -> bali 401
 			if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicAPI {
 				enableCORS(w)
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}
-			// Yen durung login lan nyoba ngakses halaman liyane -> redirect menyang /login
-			if !isPublicAPI && !isLoginPage {
-				http.Redirect(w, r, "/login", http.StatusFound)
+			// Yen durung verifikasi sandi lan ngakses halaman -> redirect menyang /login-pwd
+			if !isPublicAPI && !isPasswordPage {
+				http.Redirect(w, r, "/login-pwd", http.StatusFound)
 				return
 			}
 		} else {
-			// Yen wis login lan nyoba ngakses /login -> redirect menyang / (halaman utama)
-			if isLoginPage {
+			// Yen wis verifikasi sandi lan nyoba ngakses /login-pwd -> redirect menyang /
+			if isPasswordPage {
 				http.Redirect(w, r, "/", http.StatusFound)
 				return
+			}
+
+			// 2. LAYER 2: Verifikasi Otentikasi Google Antigravity
+			isPublicGoogleAPI := r.URL.Path == "/api/auth/start" || r.URL.Path == "/api/auth/submit" || r.URL.Path == "/api/auth/status"
+			isGoogleLoginPage := r.URL.Path == "/login"
+
+			isGoogleAuthPassed := checkOAuthTokenExists()
+
+			if !isGoogleAuthPassed {
+				// Yen durung login Google lan ngakses private API -> bali 401
+				if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicGoogleAPI && r.URL.Path != "/api/auth/logout" {
+					enableCORS(w)
+					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					return
+				}
+				// Yen durung login Google lan ngakses private page -> redirect menyang /login
+				if !isPublicGoogleAPI && !isGoogleLoginPage {
+					http.Redirect(w, r, "/login", http.StatusFound)
+					return
+				}
+			} else {
+				// Yen wis login Google lan ngakses /login -> redirect menyang /
+				if isGoogleLoginPage {
+					http.Redirect(w, r, "/", http.StatusFound)
+					return
+				}
 			}
 		}
 
@@ -203,7 +273,7 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(embeddedIndexHTML))
 }
 
-// Handler static html login
+// Handler static html login Google
 func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	content, err := os.ReadFile(filepath.Join(serverStartDir, "login.html"))
@@ -212,6 +282,55 @@ func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write([]byte(embeddedLoginHTML))
+}
+
+// Handler static html login Sandi Keamanan
+func handleLoginPwdPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	content, err := os.ReadFile(filepath.Join(serverStartDir, "login-pwd.html"))
+	if err == nil {
+		w.Write(content)
+		return
+	}
+	w.Write([]byte(embeddedLoginPwdHTML))
+}
+
+// API POST /api/auth/pwd - Verifikasi sandi keamanan
+func handlePasswordAuth(w http.ResponseWriter, r *http.Request) {
+	pwd := r.FormValue("password")
+	if pwd == "" {
+		var req struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			pwd = req.Password
+		}
+	}
+
+	if pwd == "" {
+		http.Error(w, "Sandi ora oleh kosong", http.StatusBadRequest)
+		return
+	}
+
+	if pwd != secretPassword {
+		http.Error(w, "Sandi keamanan salah!", http.StatusUnauthorized)
+		return
+	}
+
+	if passwordSessionToken == "" {
+		passwordSessionToken = generateRandomPassword(32)
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_password",
+		Value:    passwordSessionToken,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   86400 * 30, // 30 hari sesi
+	})
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sukses mlebu"))
 }
 
 // API GET /api/auth/status - Cek status otentikasi Google Antigravity ing server
@@ -365,13 +484,22 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// API POST /api/auth/logout - Mbusak token Google agy ing server
+// API POST /api/auth/logout - Mbusak token Google agy ing server & cookie sandi
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 		os.Remove(tokenPath) // Hapus file token resmi
 	}
+
+	// Hapus cookie sesi sandi keamanan
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_password",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Sukses logout"))
