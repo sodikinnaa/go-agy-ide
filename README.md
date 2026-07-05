@@ -59,60 +59,52 @@ Kanggo ngakses kanthi aman lan lancar saka HP Android, disaranake nggunakake **S
 
 ## Dokumentasi API (Akses liwat `curl`)
 
-Amarga saiki server wis dilengkapi sistem keamanan, njenengan kudu login dhisik kanggo entuk session token, banjur dikirim bebarengan karo request liyane.
-
-### 1. Langkah Awal: Login & Simpen Cookie
-Jalankan perintah iki ing terminal HP kanggo login lan nyimpen session cookie menyang file `cookie.txt`:
-```bash
-curl -c cookie.txt -d "password=sandi_njenengan" http://localhost:8080/api/auth/login
-```
-
-### 2. Kirim Request nggunakake Cookie
-Sawise login, gunakake parameter `-b cookie.txt` ing saben perintah sabanjure:
+Amarga saiki server langsung mriksa otentikasi Google Antigravity (`agy`) ing mesin, njenengan ora butuh cookie utawa sandi tambahan kanggo `curl`. Angger server wis login menyang Google, kabeh perintah `curl` ing ngisor iki iso langsung dijalankan saka HP Android (Termux):
 
 * **Obrolan/Chat karo Antigravity (Streaming)**:
   ```bash
-  curl -b cookie.txt -N -d "prompt=Buatkan endpoint HTTP GET baru" http://localhost:8080/api/chat
+  curl -N -d "prompt=Buatkan endpoint HTTP GET baru" http://localhost:8080/api/chat
   ```
 
 * **Nglakokake Perintah Terminal (Streaming)**:
   ```bash
-  curl -b cookie.txt -N -d "command=go test ./..." http://localhost:8080/api/run
+  curl -N -d "command=go test ./..." http://localhost:8080/api/run
   ```
 
 * **Maca Daftar File ing Workspace**:
   ```bash
-  curl -b cookie.txt -s http://localhost:8080/api/files
+  curl -s http://localhost:8080/api/files
   ```
 
 * **Maca Isi File**:
   ```bash
-  curl -b cookie.txt -s "http://localhost:8080/api/file?path=main.go"
+  curl -s "http://localhost:8080/api/file?path=main.go"
   ```
 
 * **Nyimpen / Nulis File**:
   ```bash
-  curl -b cookie.txt -X POST -d "isi_kode_baru_di_sini" "http://localhost:8080/api/file?path=nama_file.go"
+  curl -X POST -d "isi_kode_baru_di_sini" "http://localhost:8080/api/file?path=nama_file.go"
   ```
 
 * **Mbusak File utawa Folder**:
   ```bash
-  curl -b cookie.txt -X DELETE "http://localhost:8080/api/file?path=nama_file.go"
+  curl -X DELETE "http://localhost:8080/api/file?path=nama_file.go"
   ```
 
 * **Maca Daftar Workspace (Recent & Active)**:
   ```bash
-  curl -b cookie.txt -s http://localhost:8080/api/workspaces
+  curl -s http://localhost:8080/api/workspaces
   ```
 
 * **Ngalih / Milih Workspace Aktif**:
   ```bash
-  curl -b cookie.txt -d "path=/home/sodikinnaa/sodikin/project-lain" http://localhost:8080/api/workspaces/select
+  curl -d "path=/home/sodikinnaa/sodikin/project-lain" http://localhost:8080/api/workspaces/select
   ```
 
 * **Nambah & Bukak Workspace Anyar**:
   ```bash
-  curl -b cookie.txt -d "path=/home/sodikinnaa/sodikin/project-anyar" http://localhost:8080/api/workspaces/add
+  curl -d "path=/home/sodikinnaa/sodikin/project-anyar" http://localhost:8080/api/workspaces/add
   ```
+
 
 
