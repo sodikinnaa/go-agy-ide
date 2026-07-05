@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	_ "embed"
 	"encoding/json"
@@ -804,16 +805,22 @@ func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	dec := json.NewDecoder(file)
+	scanner := bufio.NewScanner(file)
 	var entries []HistoryEntry
-	for {
+	for scanner.Scan() {
+		lineBytes := scanner.Bytes()
+		if len(lineBytes) == 0 {
+			continue
+		}
 		var entry HistoryEntry
-		if err := dec.Decode(&entry); err == io.EOF {
-			break
-		} else if err != nil {
+		if err := json.Unmarshal(lineBytes, &entry); err != nil {
 			continue
 		}
 		entries = append(entries, entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Scanner error reading history list: %v", err)
 	}
 
 	type groupInfo struct {
@@ -902,13 +909,21 @@ func handleChatHistoryDetail(w http.ResponseWriter, r *http.Request) {
 		CreatedAt string `json:"created_at"`
 	}
 
-	dec := json.NewDecoder(file)
+	scanner := bufio.NewScanner(file)
+	// Set larger buffer size in case of long lines
+	const maxCapacity = 10 * 1024 * 1024 // 10MB
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, maxCapacity)
+
 	var messages []ChatMessage
-	for {
+	for scanner.Scan() {
+		lineBytes := scanner.Bytes()
+		if len(lineBytes) == 0 {
+			continue
+		}
+
 		var line TranscriptLine
-		if err := dec.Decode(&line); err == io.EOF {
-			break
-		} else if err != nil {
+		if err := json.Unmarshal(lineBytes, &line); err != nil {
 			continue
 		}
 
@@ -925,6 +940,10 @@ func handleChatHistoryDetail(w http.ResponseWriter, r *http.Request) {
 				Timestamp: line.CreatedAt,
 			})
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("Scanner error reading transcript detail: %v", err)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
