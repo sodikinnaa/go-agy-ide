@@ -78,20 +78,67 @@ if [ ! -f "workspaces.json" ]; then
 EOT
 fi
 
-# 6. Rampung
+# 6. Takon Port Keinginan User (Interactive Port Selection)
+echo ""
+echo "-------------------------------------------------"
+read -p "Mlebokake Port kanggo server Mobile IDE (Default: 8080): " USER_PORT
+PORT="8080"
+if [ -n "$USER_PORT" ]; then
+    if [[ "$USER_PORT" =~ ^[0-9]+$ ]]; then
+        PORT="$USER_PORT"
+    else
+        echo "Format port salah. Nggunakake port default 8080."
+    fi
+fi
+
+# 7. Nglakokake server ing background
+echo "Nglakokake server Mobile IDE ing port: $PORT..."
+if [[ "$BINARY_NAME" == *.exe ]]; then
+    PORT=$PORT ./mobile-agy.exe > server.log 2>&1 &
+else
+    PORT=$PORT ./mobile-agy > server.log 2>&1 &
+fi
+
+# Ngenteni 2 detik kanggo mriksa apa server kasil munggah
+sleep 2
+
+# Cek apa process isih mlaku
+SERVER_RUNNING=false
+if [[ "$BINARY_NAME" == *.exe ]]; then
+    if ps -ef | grep mobile-agy.exe | grep -v grep > /dev/null; then
+        SERVER_RUNNING=true
+    fi
+else
+    if ps -ef | grep mobile-agy | grep -v grep > /dev/null; then
+        SERVER_RUNNING=true
+    fi
+fi
+
+# 8. Tampilan Rampung
 echo "================================================="
 echo "                INSTALLASI SUKSES!               "
 echo "================================================="
 echo "Mobile IDE kasil disetel ing folder: $(pwd)"
 echo "-------------------------------------------------"
-echo "Cara nglakokake server:"
-if [[ "$BINARY_NAME" == *.exe ]]; then
-  echo "  PORT=8080 ./mobile-agy.exe"
+
+if [ "$SERVER_RUNNING" = true ]; then
+    echo "Server wis mlaku ing background!"
+    echo "Bukak browser lan bukak alamat iki:"
+    echo "  http://localhost:$PORT"
+    echo ""
+    echo "Kanggo mriksa log server, ketik:"
+    echo "  cat server.log"
 else
-  echo "  PORT=8080 ./mobile-agy > server.log 2>&1 &"
+    echo "Server gagal mlaku otomatis (kemungkinan port $PORT wis dienggo)."
+    echo "Njenengan bisa nglakokake server kanthi manual nganggo port liyane:"
+    if [[ "$BINARY_NAME" == *.exe ]]; then
+        echo "  PORT=9090 ./mobile-agy.exe"
+    else
+        echo "  PORT=9090 ./mobile-agy > server.log 2>&1 &"
+    fi
 fi
+
 echo ""
-echo "Cathetan: Sandi keamanan akses bakal otomatis"
-echo "digawe ing file 'password.txt' nalika server"
-echo "mlaku kaping pisanan."
+echo "Cathetan: Sandi keamanan akses wis dimuat/digawe"
+echo "ing file 'password.txt' ing folder iki."
 echo "================================================="
