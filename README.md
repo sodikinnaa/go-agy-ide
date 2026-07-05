@@ -82,7 +82,13 @@ Yen HP lan Laptop njenengan nyambung ing siji jaringan Wi-Fi sing padha:
 
 ## Dokumentasi API (Akses liwat `curl`)
 
-Amarga saiki server langsung mriksa otentikasi Google Antigravity (`agy`) ing mesin, njenengan ora butuh cookie utawa sandi tambahan kanggo `curl`. Angger server wis login menyang Google, kabeh perintah `curl` ing ngisor iki iso langsung dijalankan saka HP Android (Termux):
+Amarga saiki server langsung mriksa otentikasi Google Antigravity (`agy`) ing mesin, njenengan ora butuh cookie utawa sandi tambahan kanggo `curl`. Angger server wis login menyang Google, kabeh perintah `curl` ing ngisor iki iso langsung dijalankan saka HP Android (Termux) utawa terminal laptop.
+
+> [!IMPORTANT]
+> **Cathetan kanggo pangguna Windows PowerShell**:
+> Ing PowerShell, perintah `curl` minangka alias saka `Invoke-WebRequest` sing duwe alur beda lan ora ndhukung streaming.
+> Supaya lancar ing PowerShell, ganti perintah `curl` dadi **`curl.exe`** (contone: `curl.exe -N -d "prompt=..." http://localhost:8080/api/chat`).
+
 
 * **Obrolan/Chat karo Antigravity (Streaming)**:
   ```bash
