@@ -34,6 +34,8 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-amd64 main.go
           # MacOS ARM64 (Apple Silicon M1/M2/M3)
           GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-arm64 main.go
+          # Windows AMD64
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-windows-amd64.exe main.go
 
       - name: Set Tag Name
         id: tag
@@ -56,5 +58,6 @@ jobs:
             dist/mobile-agy-linux-arm64
             dist/mobile-agy-darwin-amd64
             dist/mobile-agy-darwin-arm64
+            dist/mobile-agy-windows-amd64.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
