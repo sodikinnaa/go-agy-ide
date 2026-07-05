@@ -834,6 +834,10 @@ func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
 		if entry.ConversationID == "" {
 			continue
 		}
+		// Filter by active workspace to avoid path mismatch
+		if filepath.Clean(entry.Workspace) != filepath.Clean(activeWorkspaceDir) {
+			continue
+		}
 		info, ok := groups[entry.ConversationID]
 		if !ok {
 			groups[entry.ConversationID] = &groupInfo{

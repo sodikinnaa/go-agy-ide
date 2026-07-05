@@ -934,6 +934,7 @@
                 const activeName = path.split('/').pop() || path;
                 document.getElementById('workspace-label').innerText = activeName;
                 refreshWorkspace();
+                startNewChat(); // Reset chat session context for the new workspace!
             } catch (err) {
                 alert(`Gagal ngalih workspace: ${err.message}`);
             }
@@ -968,6 +969,7 @@
                 const activeName = path.split('/').pop() || path;
                 document.getElementById('workspace-label').innerText = activeName;
                 refreshWorkspace();
+                startNewChat(); // Reset chat session context for the new workspace!
             } catch (err) {
                 alert(`Gagal nambah workspace: ${err.message}`);
             }

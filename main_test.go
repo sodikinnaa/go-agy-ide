@@ -190,6 +190,11 @@ func TestHandleChatHistoryList(t *testing.T) {
 	secretPassword = ""
 	defer func() { secretPassword = originalPwd }()
 
+	// Set active workspace to match mock history workspace
+	originalWorkspace := activeWorkspaceDir
+	activeWorkspaceDir = "/workspace"
+	defer func() { activeWorkspaceDir = originalWorkspace }()
+
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
 	tempHome, err := os.MkdirTemp("", "test_home_*")
