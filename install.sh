@@ -52,21 +52,33 @@ case "$OS" in
         ;;
 esac
 
-# 2. Nggawe folder instalasi
-INSTALL_DIR="mobile-ide"
-mkdir -p "$INSTALL_DIR"
-cd "$INSTALL_DIR"
+# 2. Nggawe folder instalasi (Cek supaya ora nggawe folder nested yen wis ana ing folder mobile-ide)
+if [ "$(basename "$(pwd)")" != "mobile-ide" ]; then
+    INSTALL_DIR="mobile-ide"
+    mkdir -p "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+fi
 
-# 3. Ngundhuh binary
+# 3. Mandhegake proses lawas sarta ngilangi file lawas (Nyegah error lock/write permission)
+echo "Mriksa lan ngresiki proses lawas..."
+if [[ "$BINARY_NAME" == *.exe ]]; then
+    taskkill //F //IM mobile-agy.exe 2>/dev/null || true
+else
+    # Mandhegake proses mobile-agy sarta start.sh sing isih mlaku
+    pkill -f mobile-agy 2>/dev/null || true
+fi
+rm -f "$BINARY_NAME"
+
+# 4. Ngundhuh binary anyar
 echo "Ngundhuh binary kanggo OS: $OS ($ARCH)..."
 curl -fsSL "$BINARY_URL" -o "$BINARY_NAME"
 
-# 4. Setel permission executable (khusus non-Windows)
+# 5. Setel permission executable (khusus non-Windows)
 if [[ "$BINARY_NAME" != *.exe ]]; then
     chmod +x "$BINARY_NAME"
 fi
 
-# 5. Setel workspaces.json awal
+# 6. Setel workspaces.json awal
 if [ ! -f "workspaces.json" ]; then
     cat <<EOT > workspaces.json
 {
@@ -78,7 +90,7 @@ if [ ! -f "workspaces.json" ]; then
 EOT
 fi
 
-# 6. Takon Port Keinginan User (Maca saka /dev/tty supaya support piping)
+# 7. Takon Port Keinginan User (Maca saka /dev/tty supaya support piping)
 echo ""
 echo "-------------------------------------------------"
 if [ -c /dev/tty ]; then
@@ -120,7 +132,7 @@ fi
 EOT
 chmod +x start.sh
 
-# 7. Nglakokake server ing background
+# 8. Nglakokake server ing background
 echo "Nglakokake server Mobile IDE ing port: $PORT..."
 ./start.sh > server.log 2>&1 &
 
@@ -139,7 +151,7 @@ else
     fi
 fi
 
-# 8. Tampilan Rampung
+# 9. Tampilan Rampung
 echo "================================================="
 echo "                INSTALLASI SUKSES!               "
 echo "================================================="
