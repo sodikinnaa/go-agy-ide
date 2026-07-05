@@ -51,18 +51,32 @@ curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.
 
 ## Cara Akses saka HP Android
 
-Kanggo ngakses kanthi aman lan lancar saka HP Android, disaranake nggunakake **SSH Port Forwarding**:
+Njenengan bisa ngakses Mobile IDE iki saka HP Android nganggo rong cara:
 
+### Cara 1: SSH Port Forwarding (Paling Aman)
+Cara iki disaranake lan bisa digunakake ing Linux utawa Windows:
 1. Bukak **Termux** utawa **Termius** ing HP Android.
-2. Koneksi menyang server iki nggunakake perintah port forwarding:
+2. Koneksi menyang laptop/server nggunakake perintah port forwarding iki:
    ```bash
-   ssh -L 8080:localhost:8080 username@ip-server-mu
+   ssh -L 8080:localhost:8080 username@ip-laptop-utawa-server
    ```
-3. Sawise kasil konek, bukak **Google Chrome / browser liyane** ing HP, banjur bukak alamat:
+3. Sawise kasil konek, bukak **browser (Chrome/liyane)** ing HP, banjur bukak alamat:
    ```text
    http://localhost:8080
    ```
-4. Lebokake sandi keamanan sing wis diset (misal: `sodikin123`) kanggo masuk.
+4. Lebokake sandi keamanan sing wis diset utawa sing ana ing `password.txt`.
+
+### Cara 2: Akses Langsung Jaringan Wi-Fi (Khusus Windows/Linux ing siji Wi-Fi)
+Yen HP lan Laptop njenengan nyambung ing siji jaringan Wi-Fi sing padha:
+1. **Goleki IP lokal laptop**:
+   * **Windows**: Bukak Command Prompt (CMD), ketik `ipconfig`, goleki `IPv4 Address` (contone: `192.168.1.15`).
+   * **Linux**: Bukak Terminal, ketik `hostname -I` utawa `ip a`.
+2. **Atur Firewall Windows** (yen perlu): Make sure port `8080` (utawa port custom sing dipilih) diizini liwat Windows Defender Firewall.
+3. Bukak **browser** ing HP Android, banjur bukak alamat IP lokal laptop kasebut langsung:
+   ```text
+   http://192.168.1.15:8080
+   ```
+4. Mlebokake sandi keamanan kanggo ngakses editor.
 
 ---
 
