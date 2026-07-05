@@ -115,8 +115,9 @@ func TestHandleListFilesUnauthorized(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/files", nil)
 	rr := httptest.NewRecorder()
 
-	// Run handler
-	handleListFiles(rr, req)
+	// Run handler through middleware
+	handler := authMiddleware(handleListFiles)
+	handler.ServeHTTP(rr, req)
 
 	// Verify response status is 401
 	if rr.Code != http.StatusUnauthorized {

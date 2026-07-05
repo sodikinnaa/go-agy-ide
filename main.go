@@ -65,30 +65,68 @@ func main() {
 	// Load workspaces
 	loadWorkspaces()
 
-	// Routes
-	http.HandleFunc("/", handleIndex)
-	http.HandleFunc("/login", handleLoginPage)
+	// Routes wrapped with authMiddleware
+	http.HandleFunc("/", authMiddleware(handleIndex))
+	http.HandleFunc("/login", authMiddleware(handleLoginPage))
 	
 	// Authentication APIs
-	http.HandleFunc("/api/auth/start", handleAuthStart)
-	http.HandleFunc("/api/auth/submit", handleAuthSubmit)
-	http.HandleFunc("/api/auth/logout", handleLogout)
-	http.HandleFunc("/api/auth/status", handleAuthStatus)
+	http.HandleFunc("/api/auth/start", authMiddleware(handleAuthStart))
+	http.HandleFunc("/api/auth/submit", authMiddleware(handleAuthSubmit))
+	http.HandleFunc("/api/auth/logout", authMiddleware(handleLogout))
+	http.HandleFunc("/api/auth/status", authMiddleware(handleAuthStatus))
 	
 	// Workspace and project files APIs
-	http.HandleFunc("/api/files", handleListFiles)
-	http.HandleFunc("/api/file", handleFileOperations)
-	http.HandleFunc("/api/file/create", handleCreateFileOrFolder)
-	http.HandleFunc("/api/chat", handleChatStream)
-	http.HandleFunc("/api/run", handleRunCommandStream)
-	http.HandleFunc("/api/workspaces", handleWorkspacesGet)
-	http.HandleFunc("/api/workspaces/select", handleWorkspaceSelect)
-	http.HandleFunc("/api/workspaces/add", handleWorkspaceAdd)
+	http.HandleFunc("/api/files", authMiddleware(handleListFiles))
+	http.HandleFunc("/api/file", authMiddleware(handleFileOperations))
+	http.HandleFunc("/api/file/create", authMiddleware(handleCreateFileOrFolder))
+	http.HandleFunc("/api/chat", authMiddleware(handleChatStream))
+	http.HandleFunc("/api/run", authMiddleware(handleRunCommandStream))
+	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
+	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
+	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
 
 	fmt.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
 	fmt.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
 	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		fmt.Printf("Gagal nglakokake server: %v\n", err)
+	}
+}
+
+// Middleware Keamanan Pusat
+func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Bypass CORS preflight requests
+		if r.Method == http.MethodOptions {
+			enableCORS(w)
+			return
+		}
+
+		isPublicAPI := r.URL.Path == "/api/auth/start" || r.URL.Path == "/api/auth/submit" || r.URL.Path == "/api/auth/status"
+		isLoginPage := r.URL.Path == "/login"
+
+		isAuthenticated := checkOAuthTokenExists()
+
+		if !isAuthenticated {
+			// Yen durung login lan nyoba ngakses private API -> bali 401 Unauthorized
+			if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicAPI {
+				enableCORS(w)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			// Yen durung login lan nyoba ngakses halaman liyane -> redirect menyang /login
+			if !isPublicAPI && !isLoginPage {
+				http.Redirect(w, r, "/login", http.StatusFound)
+				return
+			}
+		} else {
+			// Yen wis login lan nyoba ngakses /login -> redirect menyang / (halaman utama)
+			if isLoginPage {
+				http.Redirect(w, r, "/", http.StatusFound)
+				return
+			}
+		}
+
+		next(w, r)
 	}
 }
 
@@ -153,18 +191,8 @@ func checkOAuthTokenExists() bool {
 	return err == nil
 }
 
-// Verifikasi auth (kudu nduweni token Google OAuth Antigravity aktif ing mesin)
-func checkAuth(r *http.Request) bool {
-	return checkOAuthTokenExists()
-}
-
 // Handler static html utama
 func handleIndex(w http.ResponseWriter, r *http.Request) {
-	if !checkAuth(r) {
-		http.Redirect(w, r, "/login", http.StatusFound)
-		return
-	}
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	content, err := os.ReadFile(filepath.Join(serverStartDir, "index.html"))
 	if err == nil {
@@ -176,11 +204,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // Handler static html login
 func handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	if checkAuth(r) {
-		http.Redirect(w, r, "/", http.StatusFound)
-		return
-	}
-
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	content, err := os.ReadFile(filepath.Join(serverStartDir, "login.html"))
 	if err == nil {
@@ -192,10 +215,6 @@ func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 
 // API GET /api/auth/status - Cek status otentikasi Google Antigravity ing server
 func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{
 		"authenticated": checkOAuthTokenExists(),
@@ -204,22 +223,11 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 // API POST /api/auth/start - Mulai flow login Google resmi saka agy
 func handleAuthStart(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	// Pateni auth process sadurunge yen isih mlaku
 	if activeAuthCmd != nil && activeAuthCmd.Process != nil {
 		activeAuthCmd.Process.Kill()
 	}
 
-	// Jalankan perintah agy sing memicu otentikasi login
 	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ() // Propagasi environment variable lengkap (kaya PATH lan HOME)
@@ -235,7 +243,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Gagal nggawe stdout pipe: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	cmd.Stderr = cmd.Stdout // gabungke stdout lan stderr
+	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
 		http.Error(w, "Gagal nglakokake agy: "+err.Error(), http.StatusInternalServerError)
@@ -292,16 +300,6 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 
 // API POST /api/auth/submit - Ngirim Google Auth verification code menyang agy stdin
 func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	code := r.FormValue("code")
 	if code == "" {
 		var req struct {
@@ -322,14 +320,12 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Kirim kode verifikasi menyang stdin agy
 	_, err := io.WriteString(activeAuthStdin, code+"\n")
 	if err != nil {
 		http.Error(w, "Gagal ngirim kode menyang agy: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Enteni agy ngrampungake proses verifikasi (maks 15 detik)
 	done := make(chan error, 1)
 	go func() {
 		done <- activeAuthCmd.Wait()
@@ -362,11 +358,6 @@ func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 
 // API POST /api/auth/logout - Mbusak token Google agy ing server
 func handleLogout(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
 	homeDir, err := os.UserHomeDir()
 	if err == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
@@ -379,15 +370,6 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/workspaces
 func handleWorkspacesGet(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(WorkspaceSettings{
 		Active: activeWorkspaceDir,
@@ -397,15 +379,6 @@ func handleWorkspacesGet(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/workspaces/select
 func handleWorkspaceSelect(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	path := r.FormValue("path")
 	if path == "" {
 		var req struct {
@@ -442,15 +415,6 @@ func handleWorkspaceSelect(w http.ResponseWriter, r *http.Request) {
 
 // POST /api/workspaces/add
 func handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	path := r.FormValue("path")
 	if path == "" {
 		var req struct {
@@ -498,16 +462,6 @@ func handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 
 // Handler file list
 func handleListFiles(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	var files []FileInfo
 	err := filepath.Walk(activeWorkspaceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -563,16 +517,6 @@ func handleListFiles(w http.ResponseWriter, r *http.Request) {
 
 // Handler file read, write, delete
 func handleFileOperations(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	pathParam := r.URL.Query().Get("path")
 	if pathParam == "" {
 		http.Error(w, "missing path parameter", http.StatusBadRequest)
@@ -627,16 +571,6 @@ func handleFileOperations(w http.ResponseWriter, r *http.Request) {
 
 // Create file or folder
 func handleCreateFileOrFolder(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -684,16 +618,6 @@ func handleCreateFileOrFolder(w http.ResponseWriter, r *http.Request) {
 
 // Handler chat streaming
 func handleChatStream(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -731,6 +655,7 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command("agy", args...)
 	cmd.Dir = activeWorkspaceDir
+	cmd.Env = os.Environ()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -772,16 +697,6 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 // Handler terminal runner streaming
 func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-	if r.Method == http.MethodOptions {
-		return
-	}
-
-	if !checkAuth(r) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -804,6 +719,7 @@ func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
 
 	cmd := exec.Command("bash", "-c", command)
 	cmd.Dir = activeWorkspaceDir
+	cmd.Env = os.Environ()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
