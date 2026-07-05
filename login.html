@@ -54,6 +54,21 @@
             <p class="text-xs text-slate-400 mt-1">Otentikasi resmi Google Account</p>
         </div>
 
+        <!-- State: Already Authenticated -->
+        <div id="step-active" class="hidden space-y-4 text-center">
+            <div class="p-3 bg-green-950/40 border border-green-500/30 text-green-300 rounded-xl text-xs flex items-center space-x-2 justify-center">
+                <i data-lucide="check-circle" class="w-4 h-4 text-green-400"></i>
+                <span>Sesi Google Antigravity wis aktif ing server!</span>
+            </div>
+            <p class="text-xs text-slate-400">
+                Njenengan wis login ing mesin, ora perlu verifikasi maneh.
+            </p>
+            <button onclick="window.location.href='/'" class="w-full py-3 px-4 bg-gradient-to-r from-brand-600 to-brand-accent hover:from-brand-700 hover:to-brand-600 text-white font-semibold rounded-xl transition duration-300 transform active:scale-95 shadow-lg shadow-brand-600/30 flex items-center justify-center space-x-2">
+                <span>Mlebu menyang Workspace</span>
+                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+        </div>
+
         <!-- Initial State: Start Auth Button -->
         <div id="step-start" class="space-y-4">
             <p class="text-xs text-slate-300 text-center leading-relaxed">
@@ -189,6 +204,21 @@
                 lucide.createIcons();
             }
         }
+
+        // Check authentication status on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const res = await fetch('/api/auth/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.authenticated) {
+                        document.getElementById('step-start').classList.add('hidden');
+                        document.getElementById('step-active').classList.remove('hidden');
+                        lucide.createIcons();
+                    }
+                }
+            } catch (err) {}
+        });
     </script>
 </body>
 </html>

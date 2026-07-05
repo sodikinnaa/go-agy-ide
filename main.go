@@ -73,6 +73,7 @@ func main() {
 	http.HandleFunc("/api/auth/start", handleAuthStart)
 	http.HandleFunc("/api/auth/submit", handleAuthSubmit)
 	http.HandleFunc("/api/auth/logout", handleLogout)
+	http.HandleFunc("/api/auth/status", handleAuthStatus)
 	
 	// Workspace and project files APIs
 	http.HandleFunc("/api/files", handleListFiles)
@@ -189,6 +190,18 @@ func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(embeddedLoginHTML))
 }
 
+// API GET /api/auth/status - Cek status otentikasi Google Antigravity ing server
+func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{
+		"authenticated": checkOAuthTokenExists(),
+	})
+}
+
 // API POST /api/auth/start - Mulai flow login Google resmi saka agy
 func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
@@ -209,6 +222,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	// Jalankan perintah agy sing memicu otentikasi login
 	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
 	cmd.Dir = activeWorkspaceDir
+	cmd.Env = os.Environ() // Propagasi environment variable lengkap (kaya PATH lan HOME)
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
