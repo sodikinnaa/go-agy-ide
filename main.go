@@ -1,0 +1,731 @@
+package main
+
+import (
+	"crypto/rand"
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+)
+
+//go:embed index.html
+var embeddedIndexHTML string
+
+//go:embed login.html
+var embeddedLoginHTML string
+
+type FileInfo struct {
+	Path  string `json:"path"`
+	Name  string `json:"name"`
+	IsDir bool   `json:"isDir"`
+	Size  int64  `json:"size"`
+}
+
+type ChatRequest struct {
+	Prompt       string `json:"prompt"`
+	Model        string `json:"model"`
+	Continue     bool   `json:"continue"`
+	Conversation string `json:"conversation"`
+}
+
+type WorkspaceSettings struct {
+	Active string   `json:"active"`
+	List   []string `json:"list"`
+}
+
+var serverStartDir string
+var activeWorkspaceDir string
+var workspacesList []string
+var sessionToken string = ""
+var appPassword string = ""
+
+func main() {
+	var err error
+	serverStartDir, err = filepath.Abs(".")
+	if err != nil {
+		fmt.Printf("Gagal mendapatkan path direktori saat ini: %v\n", err)
+		os.Exit(1)
+	}
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Load workspaces
+	loadWorkspaces()
+
+	// Ambil sandi saka environment variable utawa gawe sandi acak
+	appPassword = os.Getenv("APP_PASSWORD")
+	if appPassword == "" {
+		appPassword = generateRandomPassword(8)
+		fmt.Println("==================================================")
+		fmt.Printf(" PASSWORD KEAMANAN MOBILE IDE: %s\n", appPassword)
+		fmt.Println(" Catat sandi iki kanggo mlebu ing web app!")
+		fmt.Println(" Utawa set environment variable APP_PASSWORD.")
+		fmt.Println("==================================================")
+	} else {
+		fmt.Println("==================================================")
+		fmt.Println(" Menggunakan sandi keamanan saka environment variable.")
+		fmt.Println("==================================================")
+	}
+
+	// Routes
+	http.HandleFunc("/", handleIndex)
+	http.HandleFunc("/login", handleLoginPage)
+	http.HandleFunc("/api/auth/login", handleLogin)
+	http.HandleFunc("/api/auth/logout", handleLogout)
+	http.HandleFunc("/api/files", handleListFiles)
+	http.HandleFunc("/api/file", handleFileOperations)
+	http.HandleFunc("/api/file/create", handleCreateFileOrFolder)
+	http.HandleFunc("/api/chat", handleChatStream)
+	http.HandleFunc("/api/run", handleRunCommandStream)
+
+	// Workspace management routes
+	http.HandleFunc("/api/workspaces", handleWorkspacesGet)
+	http.HandleFunc("/api/workspaces/select", handleWorkspaceSelect)
+	http.HandleFunc("/api/workspaces/add", handleWorkspaceAdd)
+
+	fmt.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
+	fmt.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
+	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
+		fmt.Printf("Gagal nglakokake server: %v\n", err)
+	}
+}
+
+// Load workspaces saka json
+func loadWorkspaces() {
+	configPath := filepath.Join(serverStartDir, "workspaces.json")
+	file, err := os.ReadFile(configPath)
+	if err != nil {
+		// Default workspace
+		activeWorkspaceDir = serverStartDir
+		workspacesList = []string{serverStartDir}
+		saveWorkspaces()
+		return
+	}
+
+	var ws WorkspaceSettings
+	if err := json.Unmarshal(file, &ws); err != nil {
+		activeWorkspaceDir = serverStartDir
+		workspacesList = []string{serverStartDir}
+		return
+	}
+
+	activeWorkspaceDir = ws.Active
+	workspacesList = ws.List
+
+	// Make sure active workspace exists
+	if _, err := os.Stat(activeWorkspaceDir); os.IsNotExist(err) {
+		activeWorkspaceDir = serverStartDir
+	}
+}
+
+// Simpen workspaces menyang json
+func saveWorkspaces() {
+	configPath := filepath.Join(serverStartDir, "workspaces.json")
+	ws := WorkspaceSettings{
+		Active: activeWorkspaceDir,
+		List:   workspacesList,
+	}
+	data, _ := json.MarshalIndent(ws, "", "  ")
+	os.WriteFile(configPath, data, 0644)
+}
+
+// Generate random secure string
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "agy123" // Fallback
+	}
+	for i, b := range bytes {
+		bytes[i] = charset[b%byte(len(charset))]
+	}
+	return string(bytes)
+}
+
+// Verifikasi session cookie
+func checkAuth(r *http.Request) bool {
+	if sessionToken == "" {
+		return false
+	}
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		return false
+	}
+	return cookie.Value == sessionToken
+}
+
+// Handler static html utama
+func handleIndex(w http.ResponseWriter, r *http.Request) {
+	if !checkAuth(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Coba moco file index.html saka serverStartDir
+	content, err := os.ReadFile(filepath.Join(serverStartDir, "index.html"))
+	if err == nil {
+		w.Write(content)
+		return
+	}
+	w.Write([]byte(embeddedIndexHTML))
+}
+
+// Handler static html login
+func handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	if checkAuth(r) {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Coba moco file login.html saka serverStartDir
+	content, err := os.ReadFile(filepath.Join(serverStartDir, "login.html"))
+	if err == nil {
+		w.Write(content)
+		return
+	}
+	w.Write([]byte(embeddedLoginHTML))
+}
+
+// Handler Login API
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	password := r.FormValue("password")
+	if password == "" {
+		var req struct {
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			password = req.Password
+		}
+	}
+
+	if password == appPassword {
+		sessionToken = generateRandomPassword(32)
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session_token",
+			Value:    sessionToken,
+			Path:     "/",
+			HttpOnly: true,
+			MaxAge:   86400 * 7, // 7 Dino
+		})
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Sukses login"))
+	} else {
+		http.Error(w, "Sandi Keamanan Salah!", http.StatusUnauthorized)
+	}
+}
+
+// Handler Logout API
+func handleLogout(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	sessionToken = "" // Invalidate session
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   -1,
+	})
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sukses logout"))
+}
+
+// GET /api/workspaces
+func handleWorkspacesGet(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(WorkspaceSettings{
+		Active: activeWorkspaceDir,
+		List:   workspacesList,
+	})
+}
+
+// POST /api/workspaces/select
+func handleWorkspaceSelect(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	path := r.FormValue("path")
+	if path == "" {
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			path = req.Path
+		}
+	}
+
+	if path == "" {
+		http.Error(w, "path parameter missing", http.StatusBadRequest)
+		return
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Verify directory exists
+	info, err := os.Stat(absPath)
+	if os.IsNotExist(err) || !info.IsDir() {
+		http.Error(w, "direktori ora ketemu utawa dudu folder", http.StatusNotFound)
+		return
+	}
+
+	activeWorkspaceDir = absPath
+	saveWorkspaces()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Workspace aktif diubah"))
+}
+
+// POST /api/workspaces/add
+func handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	path := r.FormValue("path")
+	if path == "" {
+		var req struct {
+			Path string `json:"path"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			path = req.Path
+		}
+	}
+
+	if path == "" {
+		http.Error(w, "path parameter missing", http.StatusBadRequest)
+		return
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
+
+	// Coba gawe yen durung ana
+	err = os.MkdirAll(absPath, 0755)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Gagal nggawe folder anyar: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Cek yen wis ana ing list
+	exists := false
+	for _, item := range workspacesList {
+		if item == absPath {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		workspacesList = append(workspacesList, absPath)
+	}
+
+	activeWorkspaceDir = absPath
+	saveWorkspaces()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Workspace ditambah lan dibukak"))
+}
+
+// Handler file list
+func handleListFiles(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var files []FileInfo
+	err := filepath.Walk(activeWorkspaceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+
+		rel, err := filepath.Rel(activeWorkspaceDir, path)
+		if err != nil {
+			return nil
+		}
+
+		if rel == "." {
+			return nil
+		}
+
+		// Skip hidden folder/file kayata .git, .gemini
+		parts := strings.Split(rel, string(os.PathSeparator))
+		for _, p := range parts {
+			if strings.HasPrefix(p, ".") && p != "." && p != ".." {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if p == "node_modules" {
+				if info.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		// Skip binaries
+		if info.Name() == "mobile-agy" || info.Name() == "main" {
+			return nil
+		}
+
+		files = append(files, FileInfo{
+			Path:  rel,
+			Name:  info.Name(),
+			IsDir: info.IsDir(),
+			Size:  info.Size(),
+		})
+		return nil
+	})
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(files)
+}
+
+// Handler file read, write, delete
+func handleFileOperations(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	pathParam := r.URL.Query().Get("path")
+	if pathParam == "" {
+		http.Error(w, "missing path parameter", http.StatusBadRequest)
+		return
+	}
+
+	absPath := filepath.Join(activeWorkspaceDir, pathParam)
+	if !strings.HasPrefix(absPath, activeWorkspaceDir) {
+		http.Error(w, "Access Denied: Path traversal detected", http.StatusForbidden)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		content, err := os.ReadFile(absPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal maca file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Write(content)
+
+	case http.MethodPost:
+		content, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal maca data body: %v", err), http.StatusBadRequest)
+			return
+		}
+		defer r.Body.Close()
+
+		err = os.WriteFile(absPath, content, 0644)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal nulis file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("File sukses disimpen"))
+
+	case http.MethodDelete:
+		err := os.RemoveAll(absPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal mbusak file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Sukses mbusak file/folder"))
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// Create file or folder
+func handleCreateFileOrFolder(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	pathParam := r.URL.Query().Get("path")
+	isDir := r.URL.Query().Get("isDir") == "true"
+
+	if pathParam == "" {
+		http.Error(w, "missing path parameter", http.StatusBadRequest)
+		return
+	}
+
+	absPath := filepath.Join(activeWorkspaceDir, pathParam)
+	if !strings.HasPrefix(absPath, activeWorkspaceDir) {
+		http.Error(w, "Access Denied: Path traversal detected", http.StatusForbidden)
+		return
+	}
+
+	if isDir {
+		err := os.MkdirAll(absPath, 0755)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal nggawe folder: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		parent := filepath.Dir(absPath)
+		err := os.MkdirAll(parent, 0755)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal nggawe folder induk: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		f, err := os.Create(absPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Gagal nggawe file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		f.Close()
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Sukses nggawe elemen baru"))
+}
+
+// Handler chat streaming
+func handleChatStream(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ChatRequest
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+	} else {
+		req.Prompt = r.FormValue("prompt")
+		req.Model = r.FormValue("model")
+		req.Continue = r.FormValue("continue") == "true"
+		req.Conversation = r.FormValue("conversation")
+	}
+
+	if req.Prompt == "" {
+		http.Error(w, "missing prompt parameter", http.StatusBadRequest)
+		return
+	}
+
+	args := []string{"--add-dir", activeWorkspaceDir}
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
+	}
+	args = append(args, "--print", req.Prompt, "--dangerously-skip-permissions")
+
+	if req.Conversation != "" {
+		args = append(args, "--conversation", req.Conversation)
+	} else if req.Continue {
+		args = append(args, "--continue")
+	}
+
+	cmd := exec.Command("agy", args...)
+	cmd.Dir = activeWorkspaceDir
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	buf := make([]byte, 256)
+	for {
+		n, err := stdoutPipe.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+			flusher.Flush()
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	cmd.Wait()
+}
+
+// Handler terminal runner streaming
+func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if !checkAuth(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	command := r.FormValue("command")
+	if command == "" {
+		var req struct {
+			Command string `json:"command"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			command = req.Command
+		}
+	}
+
+	if command == "" {
+		http.Error(w, "missing command", http.StatusBadRequest)
+		return
+	}
+
+	cmd := exec.Command("bash", "-c", command)
+	cmd.Dir = activeWorkspaceDir
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	buf := make([]byte, 256)
+	for {
+		n, err := stdoutPipe.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+			flusher.Flush()
+		}
+		if err != nil {
+			break
+		}
+	}
+
+	cmd.Wait()
+}
+
+func enableCORS(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}

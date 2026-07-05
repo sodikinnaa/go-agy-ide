@@ -1,0 +1,11 @@
+# Compiled binaries
+mobile-agy
+main
+
+# Configuration and session cache
+workspaces.json
+cookie.txt
+
+# OS metadata
+.DS_Store
+Thumbs.db
