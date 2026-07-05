@@ -49,6 +49,16 @@ curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.
 
 ---
 
+## Cara Update Mobile IDE
+
+Yen ana versi anyar utawa update, njenengan mung butuh mlebu menyang folder `mobile-ide` banjur nglakokake perintah iki:
+```bash
+./update.sh
+```
+*Script iki bakal otomatis ngundhuh installer paling anyar saka GitHub, nganyari binary program, lan miwiti maneh server **tanpa ngowahi port utawa sandi akses** sing wis disimpen ing file `.env`.*
+
+---
+
 ## Cara Akses saka HP Android
 
 Njenengan bisa ngakses Mobile IDE iki saka HP Android nganggo rong cara:

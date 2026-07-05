@@ -119,34 +119,46 @@ if [ ! -f "workspaces.json" ]; then
 EOT
 fi
 
-# 7. Takon Port Keinginan User (Maca saka /dev/tty supaya support piping)
-echo ""
-echo "-------------------------------------------------"
-if [ -c /dev/tty ]; then
-    read -p "Mlebokake Port kanggo server Mobile IDE (Default: 8080): " USER_PORT < /dev/tty
+# 7. Setel Konfigurasi (.env) - Ndhukung Fresh Install utawa Update
+IS_UPDATE=false
+if [ -f .env ]; then
+    IS_UPDATE=true
+    PORT=$(grep -E "^PORT=" .env | cut -d'=' -f2 || echo "8080")
+    GEN_PASSWORD=$(grep -E "^PASSWORD=" .env | cut -d'=' -f2 || echo "AgyPass123")
+    echo ""
+    echo "Nemokake file konfigurasi .env (Mode Update)..."
+    echo "Nggunakake port lawas  : $PORT"
+    echo "Nggunakake sandi lawas : $GEN_PASSWORD"
 else
-    USER_PORT=""
-fi
-
-PORT="8080"
-if [ -n "$USER_PORT" ]; then
-    if [[ "$USER_PORT" =~ ^[0-9]+$ ]]; then
-        PORT="$USER_PORT"
+    # Fresh Install: Takon Port Keinginan User
+    echo ""
+    echo "-------------------------------------------------"
+    if [ -c /dev/tty ]; then
+        read -p "Mlebokake Port kanggo server Mobile IDE (Default: 8080): " USER_PORT < /dev/tty
     else
-        echo "Format port salah. Nggunakake port default 8080."
+        USER_PORT=""
     fi
-fi
 
-# Generate sandi keamanan acak (12 karakter) kanggo saben instalasi
-GEN_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12 2>/dev/null || echo "AgyPass123")
+    PORT="8080"
+    if [ -n "$USER_PORT" ]; then
+        if [[ "$USER_PORT" =~ ^[0-9]+$ ]]; then
+            PORT="$USER_PORT"
+        else
+            echo "Format port salah. Nggunakake port default 8080."
+        fi
+    fi
 
-# Nggawe file konfigurasi .env
-cat <<EOT > .env
+    # Generate sandi keamanan acak (12 karakter)
+    GEN_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12 2>/dev/null || echo "AgyPass123")
+    
+    # Nggawe file konfigurasi .env anyar
+    cat <<EOT > .env
 PORT=$PORT
 PASSWORD=$GEN_PASSWORD
 EOT
+fi
 
-# Nggawe script start.sh kanggo nglakokake server nganggo variabel saka .env
+# Nggawe/nganyari script start.sh
 cat <<'EOT' > start.sh
 #!/bin/bash
 if [ -f .env ]; then
@@ -160,6 +172,14 @@ else
 fi
 EOT
 chmod +x start.sh
+
+# Nggawe/nganyari script update.sh supaya user gampang nglakokake update
+cat <<'EOT' > update.sh
+#!/bin/bash
+echo "Mulai nglakokake update Mobile IDE..."
+curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=$(date +%s)" | bash
+EOT
+chmod +x update.sh
 
 # 8. Nglakokake server ing background
 echo "Nglakokake server Mobile IDE ing port: $PORT..."
