@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 //go:embed index.html
@@ -42,7 +43,11 @@ var serverStartDir string
 var activeWorkspaceDir string
 var workspacesList []string
 var sessionToken string = ""
-var appPassword string = ""
+
+// Global variables for active Google OAuth authentication process
+var activeAuthCmd *exec.Cmd
+var activeAuthStdin io.WriteCloser
+var activeAuthURL string
 
 func main() {
 	var err error
@@ -60,33 +65,21 @@ func main() {
 	// Load workspaces
 	loadWorkspaces()
 
-	// Ambil sandi saka environment variable utawa gawe sandi acak
-	appPassword = os.Getenv("APP_PASSWORD")
-	if appPassword == "" {
-		appPassword = generateRandomPassword(8)
-		fmt.Println("==================================================")
-		fmt.Printf(" PASSWORD KEAMANAN MOBILE IDE: %s\n", appPassword)
-		fmt.Println(" Catat sandi iki kanggo mlebu ing web app!")
-		fmt.Println(" Utawa set environment variable APP_PASSWORD.")
-		fmt.Println("==================================================")
-	} else {
-		fmt.Println("==================================================")
-		fmt.Println(" Menggunakan sandi keamanan saka environment variable.")
-		fmt.Println("==================================================")
-	}
-
 	// Routes
 	http.HandleFunc("/", handleIndex)
 	http.HandleFunc("/login", handleLoginPage)
-	http.HandleFunc("/api/auth/login", handleLogin)
+	
+	// Authentication APIs
+	http.HandleFunc("/api/auth/start", handleAuthStart)
+	http.HandleFunc("/api/auth/submit", handleAuthSubmit)
 	http.HandleFunc("/api/auth/logout", handleLogout)
+	
+	// Workspace and project files APIs
 	http.HandleFunc("/api/files", handleListFiles)
 	http.HandleFunc("/api/file", handleFileOperations)
 	http.HandleFunc("/api/file/create", handleCreateFileOrFolder)
 	http.HandleFunc("/api/chat", handleChatStream)
 	http.HandleFunc("/api/run", handleRunCommandStream)
-
-	// Workspace management routes
 	http.HandleFunc("/api/workspaces", handleWorkspacesGet)
 	http.HandleFunc("/api/workspaces/select", handleWorkspaceSelect)
 	http.HandleFunc("/api/workspaces/add", handleWorkspaceAdd)
@@ -103,7 +96,6 @@ func loadWorkspaces() {
 	configPath := filepath.Join(serverStartDir, "workspaces.json")
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		// Default workspace
 		activeWorkspaceDir = serverStartDir
 		workspacesList = []string{serverStartDir}
 		saveWorkspaces()
@@ -120,13 +112,12 @@ func loadWorkspaces() {
 	activeWorkspaceDir = ws.Active
 	workspacesList = ws.List
 
-	// Make sure active workspace exists
 	if _, err := os.Stat(activeWorkspaceDir); os.IsNotExist(err) {
 		activeWorkspaceDir = serverStartDir
 	}
 }
 
-// Simpen workspaces menyang json
+// Simpen workspaces
 func saveWorkspaces() {
 	configPath := filepath.Join(serverStartDir, "workspaces.json")
 	ws := WorkspaceSettings{
@@ -142,7 +133,7 @@ func generateRandomPassword(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	bytes := make([]byte, length)
 	if _, err := rand.Read(bytes); err != nil {
-		return "agy123" // Fallback
+		return "agy123"
 	}
 	for i, b := range bytes {
 		bytes[i] = charset[b%byte(len(charset))]
@@ -150,8 +141,22 @@ func generateRandomPassword(length int) string {
 	return string(bytes)
 }
 
-// Verifikasi session cookie
+// Cek apa token Google OAuth Antigravity wis ana ing server
+func checkOAuthTokenExists() bool {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+	_, err = os.Stat(tokenPath)
+	return err == nil
+}
+
+// Verifikasi auth (kudu nduweni session cookie LAN token Google OAuth Antigravity aktif)
 func checkAuth(r *http.Request) bool {
+	if !checkOAuthTokenExists() {
+		return false
+	}
 	if sessionToken == "" {
 		return false
 	}
@@ -170,7 +175,6 @@ func handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Coba moco file index.html saka serverStartDir
 	content, err := os.ReadFile(filepath.Join(serverStartDir, "index.html"))
 	if err == nil {
 		w.Write(content)
@@ -187,7 +191,6 @@ func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// Coba moco file login.html saka serverStartDir
 	content, err := os.ReadFile(filepath.Join(serverStartDir, "login.html"))
 	if err == nil {
 		w.Write(content)
@@ -196,8 +199,8 @@ func handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(embeddedLoginHTML))
 }
 
-// Handler Login API
-func handleLogin(w http.ResponseWriter, r *http.Request) {
+// API POST /api/auth/start - Mulai flow login Google resmi saka agy
+func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
 		return
@@ -208,37 +211,179 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	password := r.FormValue("password")
-	if password == "" {
+	// Pateni auth process sadurunge yen isih mlaku
+	if activeAuthCmd != nil && activeAuthCmd.Process != nil {
+		activeAuthCmd.Process.Kill()
+	}
+
+	// Jalankan perintah agy sing memicu otentikasi login
+	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
+	cmd.Dir = activeWorkspaceDir
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		http.Error(w, "Gagal nggawe stdin pipe: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		http.Error(w, "Gagal nggawe stdout pipe: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	cmd.Stderr = cmd.Stdout // gabungke stdout lan stderr
+
+	if err := cmd.Start(); err != nil {
+		http.Error(w, "Gagal nglakokake agy: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	activeAuthCmd = cmd
+	activeAuthStdin = stdinPipe
+	activeAuthURL = ""
+
+	// Woco output agy ing background kanggo golek Google OAuth URL
+	go func() {
+		buf := make([]byte, 1024)
+		var output string
+		for {
+			n, err := stdoutPipe.Read(buf)
+			if n > 0 {
+				output += string(buf[:n])
+				if strings.Contains(output, "https://accounts.google.com/o/oauth2/auth") {
+					lines := strings.Split(output, "\n")
+					for _, line := range lines {
+						line = strings.TrimSpace(line)
+						if strings.HasPrefix(line, "https://accounts.google.com/o/oauth2/auth") {
+							activeAuthURL = line
+							break
+						}
+					}
+				}
+			}
+			if err != nil {
+				break
+			}
+		}
+	}()
+
+	// Enteni maksimal 5 detik kanggo entuk URL login Google
+	for i := 0; i < 50; i++ {
+		if activeAuthURL != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if activeAuthURL == "" {
+		http.Error(w, "Gagal entuk URL otentikasi saka agy (kemungkinan wis login)", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"url": activeAuthURL,
+	})
+}
+
+// API POST /api/auth/submit - Ngirim Google Auth verification code menyang agy stdin
+func handleAuthSubmit(w http.ResponseWriter, r *http.Request) {
+	enableCORS(w)
+	if r.Method == http.MethodOptions {
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	code := r.FormValue("code")
+	if code == "" {
 		var req struct {
-			Password string `json:"password"`
+			Code string `json:"code"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
-			password = req.Password
+			code = req.Code
 		}
 	}
 
-	if password == appPassword {
+	if code == "" {
+		http.Error(w, "kode verifikasi ora oleh kosong", http.StatusBadRequest)
+		return
+	}
+
+	if activeAuthCmd == nil || activeAuthStdin == nil {
+		http.Error(w, "Ora ana sesi otentikasi sing mlaku", http.StatusBadRequest)
+		return
+	}
+
+	// Kirim kode verifikasi menyang stdin agy
+	_, err := io.WriteString(activeAuthStdin, code+"\n")
+	if err != nil {
+		http.Error(w, "Gagal ngirim kode menyang agy: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Enteni agy ngrampungake proses verifikasi (maks 15 detik)
+	done := make(chan error, 1)
+	go func() {
+		done <- activeAuthCmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			// Cek yen token kasil digawe sanajan ana exit error
+			if checkOAuthTokenExists() {
+				sessionToken = generateRandomPassword(32)
+				http.SetCookie(w, &http.Cookie{
+					Name:     "session_token",
+					Value:    sessionToken,
+					Path:     "/",
+					HttpOnly: true,
+					MaxAge:   86400 * 7,
+				})
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("Sukses mlebu"))
+				return
+			}
+			http.Error(w, "Otentikasi agy gagal: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	case <-time.After(15 * time.Second):
+		activeAuthCmd.Process.Kill()
+		http.Error(w, "Otentikasi agy timeout (15s)", http.StatusRequestTimeout)
+		return
+	}
+
+	if checkOAuthTokenExists() {
 		sessionToken = generateRandomPassword(32)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "session_token",
 			Value:    sessionToken,
 			Path:     "/",
 			HttpOnly: true,
-			MaxAge:   86400 * 7, // 7 Dino
+			MaxAge:   86400 * 7,
 		})
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Sukses login"))
+		w.Write([]byte("Sukses mlebu"))
 	} else {
-		http.Error(w, "Sandi Keamanan Salah!", http.StatusUnauthorized)
+		http.Error(w, "Verifikasi gagal: token Google ora kasil digawe", http.StatusInternalServerError)
 	}
 }
 
-// Handler Logout API
+// API POST /api/auth/logout - Mbusak token Google agy ing server & cookie lokal
 func handleLogout(w http.ResponseWriter, r *http.Request) {
 	enableCORS(w)
 	if r.Method == http.MethodOptions {
 		return
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		os.Remove(tokenPath) // Hapus file token resmi
 	}
 
 	sessionToken = "" // Invalidate session
@@ -303,7 +448,6 @@ func handleWorkspaceSelect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify directory exists
 	info, err := os.Stat(absPath)
 	if os.IsNotExist(err) || !info.IsDir() {
 		http.Error(w, "direktori ora ketemu utawa dudu folder", http.StatusNotFound)
@@ -349,14 +493,12 @@ func handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Coba gawe yen durung ana
 	err = os.MkdirAll(absPath, 0755)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Gagal nggawe folder anyar: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Cek yen wis ana ing list
 	exists := false
 	for _, item := range workspacesList {
 		if item == absPath {
@@ -402,7 +544,6 @@ func handleListFiles(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 
-		// Skip hidden folder/file kayata .git, .gemini
 		parts := strings.Split(rel, string(os.PathSeparator))
 		for _, p := range parts {
 			if strings.HasPrefix(p, ".") && p != "." && p != ".." {
@@ -419,7 +560,6 @@ func handleListFiles(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Skip binaries
 		if info.Name() == "mobile-agy" || info.Name() == "main" {
 			return nil
 		}
