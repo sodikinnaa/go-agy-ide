@@ -9,3 +9,7 @@ cookie.txt
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Private security credentials
+password.txt
+
