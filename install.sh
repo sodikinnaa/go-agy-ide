@@ -66,12 +66,41 @@ if [[ "$BINARY_NAME" == *.exe ]]; then
 else
     # Mandhegake proses mobile-agy sarta start.sh sing isih mlaku
     pkill -f mobile-agy 2>/dev/null || true
+    # Ngenteni sedhela supaya proses bener-bener mati
+    sleep 1
 fi
-rm -f "$BINARY_NAME"
+
+# Nyoba mbusak file lawas kanthi aman
+if [ -f "$BINARY_NAME" ]; then
+    rm -f "$BINARY_NAME" 2>/dev/null || {
+        echo "Pènget: Gagal mbusak $BINARY_NAME lawas secara langsung. Nyoba ngganti jeneng..."
+        mv -f "$BINARY_NAME" "${BINARY_NAME}.old" 2>/dev/null || true
+    }
+fi
 
 # 4. Ngundhuh binary anyar
 echo "Ngundhuh binary kanggo OS: $OS ($ARCH)..."
-curl -fsSL "$BINARY_URL" -o "$BINARY_NAME"
+echo "Alamat URL: $BINARY_URL"
+
+# Ngundhuh menyang file sauntara (.tmp) dhisik kanggo nyegah error write lock
+TEMP_BINARY="${BINARY_NAME}.tmp"
+rm -f "$TEMP_BINARY"
+
+if ! curl -fL --no-progress-meter "$BINARY_URL" -o "$TEMP_BINARY"; then
+    echo "================================================="
+    echo "ERROR: Gagal ngundhuh binary saka GitHub!"
+    echo "Priksa sambungan internet utawa limitasi jaringan."
+    echo "Njenengan uga bisa ngundhuh manual saka URL ing ndhuwur."
+    echo "================================================="
+    exit 1
+fi
+
+# Ngalihake file sauntara dadi binary utama
+mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
+    echo "ERROR: Gagal mindhah binary sauntara menyang $BINARY_NAME."
+    echo "Kemungkinan file kasebut isih dienggo utawa ana masalah hak akses (permission)."
+    exit 1
+}
 
 # 5. Setel permission executable (khusus non-Windows)
 if [[ "$BINARY_NAME" != *.exe ]]; then
