@@ -21,6 +21,13 @@ Aplikasi **Mobile IDE** sing enteng lan modern kanggo ngoding liwat HP Android n
 
 ## Cara Instalasi & Kompilasi
 
+### Cara Cepet (One-Line Installer):
+Cukup jalankan perintah iki ing terminal server kanggo ngundhuh, ngompilasi, lan nyiapake kabeh project kanthi otomatis:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash
+```
+
+### Cara Manual:
 1. **Masuk menyang direktori project**:
    ```bash
    cd mobile-ide
@@ -32,9 +39,9 @@ Aplikasi **Mobile IDE** sing enteng lan modern kanggo ngoding liwat HP Android n
    ```
 
 3. **Jalankan server**:
-   Njenengan bisa ngeset sandi keamanan liwat environment variable `APP_PASSWORD`. Yen ora diset, server bakal nggawe sandi acak lan nampilake ing terminal log.
+   Njenengan bisa ngeset sandi keamanan liwat environment variable `PASSWORD`. Yen ora diset, server bakal nggawe sandi acak lan nampilake ing log server, sarta disimpen ing file `password.txt`.
    ```bash
-   APP_PASSWORD=sandi_njenengan PORT=8080 ./mobile-agy
+   PASSWORD=sandi_njenengan PORT=8080 ./mobile-agy
    ```
    *Secara default, server bakal mlaku ing port `8080` lan ngrungokake kabeh antarmuka jaringan (`0.0.0.0:8080`).*
 
