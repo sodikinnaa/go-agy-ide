@@ -78,10 +78,15 @@ if [ ! -f "workspaces.json" ]; then
 EOT
 fi
 
-# 6. Takon Port Keinginan User (Interactive Port Selection)
+# 6. Takon Port Keinginan User (Maca saka /dev/tty supaya support piping)
 echo ""
 echo "-------------------------------------------------"
-read -p "Mlebokake Port kanggo server Mobile IDE (Default: 8080): " USER_PORT
+if [ -c /dev/tty ]; then
+    read -p "Mlebokake Port kanggo server Mobile IDE (Default: 8080): " USER_PORT < /dev/tty
+else
+    USER_PORT=""
+fi
+
 PORT="8080"
 if [ -n "$USER_PORT" ]; then
     if [[ "$USER_PORT" =~ ^[0-9]+$ ]]; then
@@ -91,13 +96,33 @@ if [ -n "$USER_PORT" ]; then
     fi
 fi
 
+# Generate sandi keamanan acak (12 karakter) kanggo saben instalasi
+GEN_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12 2>/dev/null || echo "AgyPass123")
+
+# Nggawe file konfigurasi .env
+cat <<EOT > .env
+PORT=$PORT
+PASSWORD=$GEN_PASSWORD
+EOT
+
+# Nggawe script start.sh kanggo nglakokake server nganggo variabel saka .env
+cat <<'EOT' > start.sh
+#!/bin/bash
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+if [ -f ./mobile-agy.exe ]; then
+    ./mobile-agy.exe
+else
+    ./mobile-agy
+fi
+EOT
+chmod +x start.sh
+
 # 7. Nglakokake server ing background
 echo "Nglakokake server Mobile IDE ing port: $PORT..."
-if [[ "$BINARY_NAME" == *.exe ]]; then
-    PORT=$PORT ./mobile-agy.exe > server.log 2>&1 &
-else
-    PORT=$PORT ./mobile-agy > server.log 2>&1 &
-fi
+./start.sh > server.log 2>&1 &
 
 # Ngenteni 2 detik kanggo mriksa apa server kasil munggah
 sleep 2
@@ -120,6 +145,9 @@ echo "                INSTALLASI SUKSES!               "
 echo "================================================="
 echo "Mobile IDE kasil disetel ing folder: $(pwd)"
 echo "-------------------------------------------------"
+echo "Port Server    : $PORT"
+echo "Sandi Akses    : $GEN_PASSWORD"
+echo "-------------------------------------------------"
 
 if [ "$SERVER_RUNNING" = true ]; then
     echo "Server wis mlaku ing background!"
@@ -130,15 +158,11 @@ if [ "$SERVER_RUNNING" = true ]; then
     echo "  cat server.log"
 else
     echo "Server gagal mlaku otomatis (kemungkinan port $PORT wis dienggo)."
-    echo "Njenengan bisa nglakokake server kanthi manual nganggo port liyane:"
-    if [[ "$BINARY_NAME" == *.exe ]]; then
-        echo "  PORT=9090 ./mobile-agy.exe"
-    else
-        echo "  PORT=9090 ./mobile-agy > server.log 2>&1 &"
-    fi
+    echo "Njenengan bisa nglakokake server kanthi manual:"
+    echo "  ./start.sh"
 fi
 
 echo ""
-echo "Cathetan: Sandi keamanan akses wis dimuat/digawe"
-echo "ing file 'password.txt' ing folder iki."
+echo "Cathetan: Port sarta Sandi Akses wis disimpen ing file '.env'."
+echo "Njenengan bisa ngowahi file '.env' kanggo custom."
 echo "================================================="
