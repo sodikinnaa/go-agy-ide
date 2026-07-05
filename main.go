@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -85,10 +86,10 @@ func main() {
 	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
 
-	fmt.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
-	fmt.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
+	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
+	log.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
 	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
-		fmt.Printf("Gagal nglakokake server: %v\n", err)
+		log.Printf("Gagal nglakokake server: %v\n", err)
 	}
 }
 
@@ -228,7 +229,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 		activeAuthCmd.Process.Kill()
 	}
 
-	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
+	cmd := exec.Command("script", "-q", "-c", "agy --print hello --dangerously-skip-permissions", "/dev/null")
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ() // Propagasi environment variable lengkap (kaya PATH lan HOME)
 
@@ -245,7 +246,11 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd.Stderr = cmd.Stdout
 
+	log.Printf("[AUTH START] starting command: %v in dir: %s", cmd.Args, cmd.Dir)
+	log.Printf("[AUTH START] PATH=%q HOME=%q", os.Getenv("PATH"), os.Getenv("HOME"))
+
 	if err := cmd.Start(); err != nil {
+		log.Printf("[AUTH ERROR] failed to start command: %v", err)
 		http.Error(w, "Gagal nglakokake agy: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -261,21 +266,25 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := stdoutPipe.Read(buf)
 			if n > 0 {
-				output += string(buf[:n])
+				chunk := string(buf[:n])
+				log.Printf("[AUTH READ CHUNK]: %q", chunk)
+				output += chunk
 				if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/auth"); idx != -1 {
 					urlPart := output[idx:]
 					if endIdx := strings.IndexAny(urlPart, " \r\n\t"); endIdx != -1 {
 						activeAuthURL = urlPart[:endIdx]
+						log.Printf("[AUTH FOUND URL]: %s", activeAuthURL)
 						break
 					}
 				}
 			}
 			if err != nil {
+				log.Printf("[AUTH READ EOF/ERROR]: %v", err)
 				break
 			}
 		}
 		if activeAuthURL == "" {
-			fmt.Printf("[AUTH ERROR] agy output was: %s\n", output)
+			log.Printf("[AUTH ERROR] agy output was: %q\n", output)
 		}
 	}()
 
