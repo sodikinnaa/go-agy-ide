@@ -240,14 +240,11 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 			n, err := stdoutPipe.Read(buf)
 			if n > 0 {
 				output += string(buf[:n])
-				if strings.Contains(output, "https://accounts.google.com/o/oauth2/auth") {
-					lines := strings.Split(output, "\n")
-					for _, line := range lines {
-						line = strings.TrimSpace(line)
-						if strings.HasPrefix(line, "https://accounts.google.com/o/oauth2/auth") {
-							activeAuthURL = line
-							break
-						}
+				if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/auth"); idx != -1 {
+					urlPart := output[idx:]
+					if endIdx := strings.IndexAny(urlPart, " \r\n\t"); endIdx != -1 {
+						activeAuthURL = urlPart[:endIdx]
+						break
 					}
 				}
 			}
@@ -255,10 +252,13 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		if activeAuthURL == "" {
+			fmt.Printf("[AUTH ERROR] agy output was: %s\n", output)
+		}
 	}()
 
-	// Enteni maksimal 5 detik kanggo entuk URL login Google
-	for i := 0; i < 50; i++ {
+	// Enteni maksimal 20 detik kanggo entuk URL login Google (amarga agy kadhangkala butuh wektu kanggo inisialisasi)
+	for i := 0; i < 200; i++ {
 		if activeAuthURL != "" {
 			break
 		}
@@ -266,7 +266,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if activeAuthURL == "" {
-		http.Error(w, "Gagal entuk URL otentikasi saka agy (kemungkinan wis login)", http.StatusInternalServerError)
+		http.Error(w, "Gagal entuk URL otentikasi saka agy (kemungkinan timeout utawa wis login)", http.StatusInternalServerError)
 		return
 	}
 
