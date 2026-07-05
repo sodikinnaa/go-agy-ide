@@ -92,6 +92,8 @@ func main() {
 	http.HandleFunc("/api/file", authMiddleware(handleFileOperations))
 	http.HandleFunc("/api/file/create", authMiddleware(handleCreateFileOrFolder))
 	http.HandleFunc("/api/chat", authMiddleware(handleChatStream))
+	http.HandleFunc("/api/chat/history", authMiddleware(handleChatHistoryList))
+	http.HandleFunc("/api/chat/history/detail", authMiddleware(handleChatHistoryDetail))
 	http.HandleFunc("/api/run", authMiddleware(handleRunCommandStream))
 	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
@@ -751,6 +753,185 @@ func handleCreateFileOrFolder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Sukses nggawe elemen baru"))
+}
+
+// Helper struct kanggo riwayat chat
+type HistoryEntry struct {
+	Display        string `json:"display"`
+	Timestamp      int64  `json:"timestamp"`
+	Workspace      string `json:"workspace"`
+	ConversationID string `json:"conversationId"`
+}
+
+type ChatHistoryItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Timestamp int64  `json:"timestamp"`
+}
+
+type ChatMessage struct {
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+}
+
+type ChatHistoryDetail struct {
+	ID       string        `json:"id"`
+	Messages []ChatMessage `json:"messages"`
+}
+
+func getHistoryFilePath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(homeDir, ".gemini", "antigravity-cli", "history.jsonl"), nil
+}
+
+// API GET /api/chat/history - Maca daftar riwayat obrolan saka history.jsonl
+func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
+	historyPath, err := getHistoryFilePath()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	file, err := os.Open(historyPath)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+	defer file.Close()
+
+	dec := json.NewDecoder(file)
+	var entries []HistoryEntry
+	for {
+		var entry HistoryEntry
+		if err := dec.Decode(&entry); err == io.EOF {
+			break
+		} else if err != nil {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	type groupInfo struct {
+		title    string
+		earliest int64
+		latest   int64
+	}
+	groups := make(map[string]*groupInfo)
+
+	for _, entry := range entries {
+		if entry.ConversationID == "" {
+			continue
+		}
+		info, ok := groups[entry.ConversationID]
+		if !ok {
+			groups[entry.ConversationID] = &groupInfo{
+				title:    entry.Display,
+				earliest: entry.Timestamp,
+				latest:   entry.Timestamp,
+			}
+		} else {
+			if entry.Timestamp < info.earliest {
+				info.earliest = entry.Timestamp
+				info.title = entry.Display
+			}
+			if entry.Timestamp > info.latest {
+				info.latest = entry.Timestamp
+			}
+		}
+	}
+
+	var list []ChatHistoryItem
+	for id, info := range groups {
+		title := info.title
+		if len(title) > 60 {
+			title = title[:57] + "..."
+		}
+		list = append(list, ChatHistoryItem{
+			ID:        id,
+			Title:     title,
+			Timestamp: info.latest,
+		})
+	}
+
+	// Sortir descending (paling anyar ing dhuwur)
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[i].Timestamp < list[j].Timestamp {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+// API GET /api/chat/history/detail - Maca isi obrolan saka transcript.jsonl
+func handleChatHistoryDetail(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	id = filepath.Base(id) // Nyegah directory traversal
+
+	transcriptPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", id, ".system_generated", "logs", "transcript.jsonl")
+	file, err := os.Open(transcriptPath)
+	if err != nil {
+		http.Error(w, "Obrolan ora ketemu", http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	type TranscriptLine struct {
+		Source    string `json:"source"`
+		Type      string `json:"type"`
+		Content   string `json:"content"`
+		CreatedAt string `json:"created_at"`
+	}
+
+	dec := json.NewDecoder(file)
+	var messages []ChatMessage
+	for {
+		var line TranscriptLine
+		if err := dec.Decode(&line); err == io.EOF {
+			break
+		} else if err != nil {
+			continue
+		}
+
+		if line.Type == "USER_INPUT" && line.Content != "" {
+			messages = append(messages, ChatMessage{
+				Role:      "user",
+				Content:   line.Content,
+				Timestamp: line.CreatedAt,
+			})
+		} else if line.Type == "PLANNER_RESPONSE" && line.Content != "" {
+			messages = append(messages, ChatMessage{
+				Role:      "model",
+				Content:   line.Content,
+				Timestamp: line.CreatedAt,
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ChatHistoryDetail{
+		ID:       id,
+		Messages: messages,
+	})
 }
 
 // Handler chat streaming
