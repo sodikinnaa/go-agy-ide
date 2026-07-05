@@ -21,19 +21,21 @@ Aplikasi **Mobile IDE** sing enteng lan modern kanggo ngoding liwat HP Android n
 
 ## Cara Instalasi & Kompilasi
 
-### Cara Cepet (One-Line Installer):
-Cukup jalankan perintah iki ing terminal server kanggo ngundhuh, ngompilasi, lan nyiapake kabeh project kanthi otomatis:
+### Cara Cepet (One-Line Installer - Tanpa Perlu Install Go/Compiler):
+Cukup jalankan perintah iki ing terminal server utawa Termux HP kanggo ngundhuh pre-compiled binary lan nyiapake kabeh kanthi otomatis:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash
 ```
+*Script iki bakal otomatis ndeteksi OS lan arsitektur CPU (Linux AMD64, Linux ARM64, MacOS, lsp.) sarta ngundhuh binary sing cocog saka kaca Rilis GitHub.*
 
-### Cara Manual:
-1. **Masuk menyang direktori project**:
+### Cara Manual (Ngompilasi Dewe):
+1. **Download source code** lan mlebu menyang folder:
    ```bash
+   git clone https://github.com/sodikinnaa/go-agy-ide.git mobile-ide
    cd mobile-ide
    ```
 
-2. **Kompilasi kode program**:
+2. **Kompilasi kode program** (kudu ana compiler Go):
    ```bash
    go build -o mobile-agy main.go
    ```

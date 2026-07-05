@@ -5,35 +5,58 @@ set -e
 echo "================================================="
 echo "        Mobile IDE One-Line Installer           "
 echo "================================================="
-echo "Mulai ngundhuh lan nyetel Mobile IDE..."
+echo "Mulai ngundhuh pre-compiled binary saka GitHub..."
 
-# 1. Cek dependensi Git
-if ! command -v git &> /dev/null; then
-    echo "Error: git ora ketemu. Mangga instal git dhisik!"
-    exit 1
-fi
+# 1. Deteksi OS lan Arsitektur CPU
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
 
-# 2. Cek dependensi Go (Golang)
-if ! command -v go &> /dev/null; then
-    echo "Error: go (Golang) ora ketemu. Mangga instal golang dhisik!"
-    exit 1
-fi
+case "$OS" in
+    linux)
+        case "$ARCH" in
+            x86_64|amd64)
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-linux-amd64"
+                ;;
+            aarch64|arm64)
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-linux-arm64"
+                ;;
+            *)
+                echo "Error: Arsitektur CPU $ARCH ora didhukung kanggo Linux."
+                exit 1
+                ;;
+        esac
+        ;;
+    darwin)
+        case "$ARCH" in
+            x86_64|amd64)
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-darwin-amd64"
+                ;;
+            arm64)
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-darwin-arm64"
+                ;;
+            *)
+                echo "Error: Arsitektur CPU $ARCH ora didhukung kanggo MacOS."
+                exit 1
+                ;;
+        esac
+        ;;
+    *)
+        echo "Error: Sistem Operasi $OS ora didhukung."
+        exit 1
+        ;;
+esac
 
-# 3. Clone repository menyang folder 'mobile-ide'
+# 2. Nggawe folder instalasi
 INSTALL_DIR="mobile-ide"
-if [ -d "$INSTALL_DIR" ]; then
-    echo "Folder '$INSTALL_DIR' wis ana. Nganyari kode saka GitHub..."
-    cd "$INSTALL_DIR"
-    git pull
-else
-    echo "Cloning repository saka GitHub..."
-    git clone https://github.com/sodikinnaa/go-agy-ide.git "$INSTALL_DIR"
-    cd "$INSTALL_DIR"
-fi
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
 
-# 4. Kompilasi binary Go
-echo "Kompilasi source code..."
-go build -o mobile-agy main.go
+# 3. Ngundhuh binary
+echo "Ngundhuh binary kanggo OS: $OS ($ARCH)..."
+curl -fsSL "$BINARY_URL" -o mobile-agy
+
+# 4. Setel permission executable
+chmod +x mobile-agy
 
 # 5. Setel workspaces.json awal
 if [ ! -f "workspaces.json" ]; then

@@ -338,3 +338,66 @@ func TestHandleChatHistoryDetail(t *testing.T) {
 		t.Errorf("incorrect message 1 format: %+v", detail.Messages[1])
 	}
 }
+
+func TestHandlePreviewFile(t *testing.T) {
+	// Bypass password check
+	originalPwd := secretPassword
+	secretPassword = ""
+	defer func() { secretPassword = originalPwd }()
+
+	// Mock HOME env
+	originalHome := os.Getenv("HOME")
+	tempHome, err := os.MkdirTemp("", "test_home_*")
+	if err != nil {
+		t.Fatalf("failed to create temp home: %v", err)
+	}
+	defer os.RemoveAll(tempHome)
+
+	os.Setenv("HOME", tempHome)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write dummy Google token to pass Layer 2 Google Auth check
+	historyDir := filepath.Join(tempHome, ".gemini", "antigravity-cli")
+	err = os.MkdirAll(historyDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create history dir: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(historyDir, "antigravity-oauth-token"), []byte("dummy"), 0600)
+	if err != nil {
+		t.Fatalf("failed to write dummy token: %v", err)
+	}
+
+	// Setup mock activeWorkspaceDir
+	tempWS, err := os.MkdirTemp("", "test_ws_*")
+	if err != nil {
+		t.Fatalf("failed to create temp workspace: %v", err)
+	}
+	defer os.RemoveAll(tempWS)
+
+	originalWorkspace := activeWorkspaceDir
+	activeWorkspaceDir = tempWS
+	defer func() { activeWorkspaceDir = originalWorkspace }()
+
+	// Write a mock test file in workspace
+	testFile := "preview.html"
+	testContent := "<html>Hello Preview</html>"
+	err = os.WriteFile(filepath.Join(tempWS, testFile), []byte(testContent), 0644)
+	if err != nil {
+		t.Fatalf("failed to write mock file: %v", err)
+	}
+
+	// Request for /preview/preview.html
+	req := httptest.NewRequest(http.MethodGet, "/preview/preview.html", nil)
+	rr := httptest.NewRecorder()
+
+	handler := authMiddleware(handlePreviewFile)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	if rr.Body.String() != testContent {
+		t.Errorf("expected body %s, got %s", testContent, rr.Body.String())
+	}
+}

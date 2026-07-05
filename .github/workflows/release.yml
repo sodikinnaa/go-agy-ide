@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build Binaries
+        run: |
+          mkdir -p dist
+          # Linux AMD64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-amd64 main.go
+          # Linux ARM64 (for Raspberry Pi, Termux, etc.)
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-arm64 main.go
+          # MacOS AMD64
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-amd64 main.go
+          # MacOS ARM64 (Apple Silicon M1/M2/M3)
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-arm64 main.go
+
+      - name: Set Tag Name
+        id: tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or Update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: Release ${{ steps.tag.outputs.tag_name }}
+          draft: false
+          prerelease: ${{ steps.tag.outputs.tag_name == 'latest' }}
+          files: |
+            dist/mobile-agy-linux-amd64
+            dist/mobile-agy-linux-arm64
+            dist/mobile-agy-darwin-amd64
+            dist/mobile-agy-darwin-arm64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

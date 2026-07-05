@@ -99,6 +99,7 @@ func main() {
 	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
+	http.HandleFunc("/preview/", authMiddleware(handlePreviewFile))
 
 	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
 	log.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
@@ -1104,4 +1105,21 @@ func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+}
+
+// API GET /preview/* - Ngawula file statis saka workspace aktif kanggo preview
+func handlePreviewFile(w http.ResponseWriter, r *http.Request) {
+	relPath := strings.TrimPrefix(r.URL.Path, "/preview/")
+	if relPath == "" {
+		http.Error(w, "missing file path", http.StatusBadRequest)
+		return
+	}
+
+	absPath := filepath.Join(activeWorkspaceDir, relPath)
+	if !strings.HasPrefix(absPath, activeWorkspaceDir) {
+		http.Error(w, "Access Denied: Path traversal detected", http.StatusForbidden)
+		return
+	}
+
+	http.ServeFile(w, r, absPath)
 }
