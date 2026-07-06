@@ -885,6 +885,16 @@ func getHistoryFilePath() (string, error) {
 	return filepath.Join(homeDir, ".gemini", "antigravity-cli", "history.jsonl"), nil
 }
 
+func isWorkspaceMatch(w1, w2 string) bool {
+	p1 := filepath.Clean(w1)
+	p2 := filepath.Clean(w2)
+	if p1 == p2 {
+		return true
+	}
+	// Cek yen salah siji minangka subfolder saka liyane
+	return strings.HasPrefix(p1, p2+string(filepath.Separator)) || strings.HasPrefix(p2, p1+string(filepath.Separator))
+}
+
 // API GET /api/chat/history - Maca daftar riwayat obrolan saka history.jsonl
 func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
 	historyPath, err := getHistoryFilePath()
@@ -930,8 +940,8 @@ func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
 		if entry.ConversationID == "" {
 			continue
 		}
-		// Filter by active workspace to avoid path mismatch
-		if filepath.Clean(entry.Workspace) != filepath.Clean(activeWorkspaceDir) {
+		// Filter by active workspace to avoid path mismatch (allowing subdirectory match)
+		if !isWorkspaceMatch(entry.Workspace, activeWorkspaceDir) {
 			continue
 		}
 		info, ok := groups[entry.ConversationID]
