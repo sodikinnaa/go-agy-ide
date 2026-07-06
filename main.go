@@ -56,6 +56,7 @@ var passwordSessionToken string = ""
 var activeAuthCmd *exec.Cmd
 var activeAuthStdin io.WriteCloser
 var activeAuthURL string
+var bypassDynamicAuthCheck bool = false
 
 func main() {
 	var err error
@@ -293,8 +294,13 @@ func checkOAuthTokenExists() bool {
 	}
 
 	// Yen file token ora ana, cek apa agy bisa mlaku tanpa prompt (keychain/env auth)
-	// Kita batasi nganggo timeout 3 detik
-	cmd := exec.Command(findAgyPath(), "--print", "hello", "--dangerously-skip-permissions")
+	// Kita batasi nganggo timeout 8 detik lan nggunakake script
+	if bypassDynamicAuthCheck {
+		return false
+	}
+	agyPath := findAgyPath()
+	cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
+	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Run()
@@ -310,7 +316,7 @@ func checkOAuthTokenExists() bool {
 			log.Printf("[AUTH] Nemokake sesi keychain sing wis ana. Nggawe file dummy token.")
 			return true
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(8 * time.Second):
 		// Timeout -> mateni proses
 		if cmd.Process != nil {
 			cmd.Process.Kill()
@@ -692,7 +698,7 @@ func handleWorkspaceAdd(w http.ResponseWriter, r *http.Request) {
 
 // Handler file list
 func handleListFiles(w http.ResponseWriter, r *http.Request) {
-	var files []FileInfo
+	files := []FileInfo{}
 	err := filepath.Walk(activeWorkspaceDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil

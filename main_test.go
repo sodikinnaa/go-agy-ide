@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+func init() {
+	bypassDynamicAuthCheck = true
+}
+
 func TestGenerateRandomPassword(t *testing.T) {
 	lengths := []int{8, 16, 32}
 	for _, l := range lengths {

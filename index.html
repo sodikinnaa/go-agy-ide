@@ -422,7 +422,8 @@
             try {
                 const res = await fetch('/api/files');
                 if (!res.ok) throw new Error('Gagal ngambil daftar file');
-                const files = await res.json();
+                let files = await res.json();
+                if (!files) files = [];
                 
                 if (files.length === 0) {
                     treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Workspace kosong</div>';
