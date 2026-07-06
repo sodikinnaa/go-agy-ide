@@ -476,3 +476,26 @@ func enableCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 }
+
+// POST /api/webhook
+func handleGithubWebhook(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	log.Printf("[WEBHOOK] GitHub Webhook diterima, memulai git pull di background...")
+	go func() {
+		cmd := exec.Command("git", "pull")
+		cmd.Dir = serverStartDir
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("[WEBHOOK] Gagal menjalankan git pull: %v\nOutput: %s\n", err, string(output))
+		} else {
+			log.Printf("[WEBHOOK] Sukses git pull:\n%s\n", string(output))
+		}
+	}()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Webhook received successfully. Pulling changes..."))
+}

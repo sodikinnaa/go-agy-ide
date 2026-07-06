@@ -54,6 +54,7 @@ func main() {
 	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
 	http.HandleFunc("/api/models", authMiddleware(handleModelsList))
 	http.HandleFunc("/preview/", authMiddleware(handlePreviewFile))
+	http.HandleFunc("/api/webhook", handleGithubWebhook)
 
 	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
 	log.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
