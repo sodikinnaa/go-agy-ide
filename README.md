@@ -49,9 +49,40 @@ curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.
 
 ---
 
-## Cara Update Mobile IDE
+## Perintah Global `agy-mobile`
 
-Yen ana versi anyar utawa update, njenengan mung butuh mlebu menyang folder `mobile-ide` banjur nglakokake perintah iki:
+Sawise instalasi, njenengan bisa nggunakake perintah global `agy-mobile` saka ngendi wae ing terminal:
+
+* **Mriksa status server (running/stopped, port, sandi)**:
+  ```bash
+  agy-mobile status
+  ```
+* **Miwiti server**:
+  ```bash
+  agy-mobile start
+  ```
+* **Mandhegake server**:
+  ```bash
+  agy-mobile stop
+  ```
+* **Miwiti maneh (restart) server**:
+  ```bash
+  agy-mobile restart
+  ```
+* **Nganyari (update) server menyang versi paling anyar**:
+  ```bash
+  agy-mobile update
+  ```
+* **Mbusak instalasi (uninstall) Mobile IDE**:
+  ```bash
+  agy-mobile uninstall
+  ```
+
+---
+
+## Cara Update Mobile IDE (Manual)
+
+Yen ana versi anyar utawa update, saliyane nganggo `agy-mobile update`, njenengan uga bisa mlebu menyang folder `mobile-ide` banjur nglakokake perintah iki:
 ```bash
 ./update.sh
 ```
