@@ -265,6 +265,17 @@ case "\$1" in
             echo "========================================="
         fi
         ;;
+    log)
+        if [ -f "\$INSTALL_DIR/server.log" ]; then
+            if [ "\$2" == "-f" ] || [ "\$2" == "follow" ]; then
+                tail -f "\$INSTALL_DIR/server.log"
+            else
+                tail -n 100 "\$INSTALL_DIR/server.log"
+            fi
+        else
+            echo "No server.log found in \$INSTALL_DIR"
+        fi
+        ;;
     update)
         echo "Updating Mobile IDE..."
         curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=\$(date +%s)" | bash
@@ -289,7 +300,7 @@ case "\$1" in
         echo "Mobile IDE successfully uninstalled."
         ;;
     *)
-        echo "Usage: agy-mobile {start|stop|restart|status|update|uninstall}"
+        echo "Usage: agy-mobile {start|stop|restart|status|log|update|uninstall}"
         exit 1
         ;;
 esac

@@ -73,6 +73,11 @@ Sawise instalasi, njenengan bisa nggunakake perintah global `agy-mobile` saka ng
   ```bash
   agy-mobile restart
   ```
+* **Maca log server (100 baris pungkasan)**:
+  ```bash
+  agy-mobile log
+  ```
+  *Bisa uga nggunakake `agy-mobile log -f` kanggo streaming log sacara real-time.*
 * **Nganyari (update) server menyang versi paling anyar**:
   ```bash
   agy-mobile update
