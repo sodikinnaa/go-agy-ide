@@ -382,7 +382,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 	activeAuthStdin = stdinPipe
 	activeAuthURL = ""
 
-	// Woco output agy ing background kanggo golek Google OAuth URL
+	// Woco output agy ing background kanggo golek Google OAuth URL lan auto-respond prompts
 	go func() {
 		buf := make([]byte, 1024)
 		var output string
@@ -392,12 +392,32 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 				chunk := string(buf[:n])
 				log.Printf("[AUTH READ CHUNK]: %q", chunk)
 				output += chunk
-				if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/auth"); idx != -1 {
-					urlPart := output[idx:]
-					if endIdx := strings.IndexAny(urlPart, " \r\n\t"); endIdx != -1 {
-						activeAuthURL = urlPart[:endIdx]
-						log.Printf("[AUTH FOUND URL]: %s", activeAuthURL)
-						break
+				
+				lowerOut := strings.ToLower(output)
+				if strings.Contains(lowerOut, "select login method:") || strings.Contains(lowerOut, "select login method") {
+					log.Printf("[AUTH] Prompt 'Select login method' detected. Sending '1\\n'...")
+					io.WriteString(stdinPipe, "1\n")
+					output = "" // Reset buffer
+				} else if strings.Contains(lowerOut, "select theme") || 
+				          strings.Contains(lowerOut, "choose theme") ||
+				          strings.Contains(lowerOut, "select a theme") ||
+				          strings.Contains(lowerOut, "color theme") ||
+				          strings.Contains(lowerOut, "arrow keys to navigate") ||
+				          strings.Contains(lowerOut, "enter to select") ||
+				          strings.Contains(lowerOut, "[y/n]") ||
+				          strings.Contains(lowerOut, "[yes/no]") {
+					log.Printf("[AUTH] Interactive prompt detected. Sending '\\n' to accept default...")
+					io.WriteString(stdinPipe, "\n")
+					output = "" // Reset buffer
+				}
+
+				if activeAuthURL == "" {
+					if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/auth"); idx != -1 {
+						urlPart := output[idx:]
+						if endIdx := strings.IndexAny(urlPart, " \r\n\t"); endIdx != -1 {
+							activeAuthURL = urlPart[:endIdx]
+							log.Printf("[AUTH FOUND URL]: %s", activeAuthURL)
+						}
 					}
 				}
 			}
