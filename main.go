@@ -952,7 +952,7 @@ func handleChatHistoryList(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var list []ChatHistoryItem
+	list := []ChatHistoryItem{}
 	for id, info := range groups {
 		title := info.title
 		if len(title) > 60 {
@@ -1015,7 +1015,7 @@ func handleChatHistoryDetail(w http.ResponseWriter, r *http.Request) {
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, maxCapacity)
 
-	var messages []ChatMessage
+	messages := []ChatMessage{}
 	for scanner.Scan() {
 		lineBytes := scanner.Bytes()
 		if len(lineBytes) == 0 {

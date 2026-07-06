@@ -1057,7 +1057,8 @@
             try {
                 const res = await fetch('/api/chat/history');
                 if (!res.ok) throw new Error();
-                const list = await res.json();
+                let list = await res.json();
+                if (!list) list = [];
                 
                 if (list.length === 0) {
                     itemsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">Ora ana riwayat chat</div>';
