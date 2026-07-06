@@ -107,6 +107,24 @@ if [[ "$BINARY_NAME" != *.exe ]]; then
     chmod +x "$BINARY_NAME"
 fi
 
+# 5.5. Mriksa lan Nginstal Google Antigravity CLI (agy / gemini cli)
+echo "Mriksa Google Antigravity CLI (agy)..."
+if ! command -v agy &> /dev/null && [ ! -f "$HOME/.local/bin/agy" ]; then
+    echo "Google Antigravity CLI (agy) ora ditemokake. Mulai ngundhuh lan nginstal..."
+    if ! curl -fsSL https://antigravity.google/cli/install.sh | bash; then
+        echo "Pènget: Gagal nginstal Antigravity CLI kanthi otomatis."
+        echo "Njenengan bisa nyoba nginstal manual nganggo perintah:"
+        echo "  curl -fsSL https://antigravity.google/cli/install.sh | bash"
+    fi
+else
+    echo "Google Antigravity CLI (agy) wis terinstal."
+fi
+
+# Tambah ~/.local/bin menyang PATH yen durung ana ing session iki
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 # 6. Setel workspaces.json awal
 if [ ! -f "workspaces.json" ]; then
     cat <<EOT > workspaces.json
@@ -161,6 +179,11 @@ fi
 # Nggawe/nganyari script start.sh
 cat <<'EOT' > start.sh
 #!/bin/bash
+# Tambah ~/.local/bin menyang PATH yen durung ana
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
 fi
