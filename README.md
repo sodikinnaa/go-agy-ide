@@ -13,9 +13,13 @@ Aplikasi **Mobile IDE** sing enteng lan modern kanggo ngoding liwat HP Android n
 ---
 
 ## Persyaratan Sistem
-- **Go (Golang)**: Versi 1.16 utawa luwih anyar.
+- **Go (Golang)**: Versi 1.16 utawa luwih anyar (kudu ana mung yen njenengan kepengin ngompilasi dhewe saka source code).
 - **Antigravity CLI (`agy`)**: Wis terinstal lan terotentikasi ing server.
 - **Bash**: Kanggo nglakokake perintah ing terminal console.
+
+> [!NOTE]
+> **Kompatibilitas GLIBC**:
+> Binary pra-kompilasi sing kasedhiya ing GitHub dibangun kanthi **statis (`CGO_ENABLED=0`)**. Iki tegese program ora gumantung marang versi GLIBC sistem (`libc.so`), saengga bisa mlaku kanthi lancar ing distro Linux lawas, lingkungan wadhah (*container*) kaya GitHub Codespaces/Gitpod, sarta Termux ing Android tanpa nemoni masalah error `GLIBC_2.34 not found`.
 
 ---
 
