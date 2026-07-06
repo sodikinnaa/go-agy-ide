@@ -59,6 +59,147 @@ if [ "$(basename "$(pwd)")" != "mobile-ide" ]; then
     cd "$INSTALL_DIR"
 fi
 
+generate_scripts() {
+    # Nggawe/nganyari script start.sh
+    cat <<'EOT' > start.sh
+#!/bin/bash
+# Tambah ~/.local/bin menyang PATH yen durung ana
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+if [ -f ./mobile-agy.exe ]; then
+    ./mobile-agy.exe
+else
+    ./mobile-agy
+fi
+EOT
+    chmod +x start.sh
+
+    # Nggawe/nganyari script update.sh supaya user gampang nglakokake update
+    cat <<'EOT' > update.sh
+#!/bin/bash
+echo "Mulai nglakokake update Mobile IDE..."
+curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=$(date +%s)" | bash
+EOT
+    chmod +x update.sh
+
+    # Nggawe command global 'agy-mobile' ing ~/.local/bin/agy-mobile
+    echo "Nggawe script wrapper global 'agy-mobile'..."
+    mkdir -p "$HOME/.local/bin"
+    ABS_INSTALL_DIR="$(pwd)"
+    cat <<EOF > "$HOME/.local/bin/agy-mobile"
+#!/bin/bash
+# Antigravity Mobile IDE Wrapper CLI
+
+INSTALL_DIR="$ABS_INSTALL_DIR"
+
+case "\$1" in
+    start)
+        echo "Starting Mobile IDE..."
+        if pgrep -f "mobile-agy" > /dev/null; then
+            echo "Mobile IDE is already running."
+        else
+            cd "\$INSTALL_DIR"
+            ./start.sh > server.log 2>&1 &
+            sleep 2
+            if pgrep -f "mobile-agy" > /dev/null; then
+                echo "Mobile IDE started successfully."
+            else
+                echo "Failed to start Mobile IDE. Check \$INSTALL_DIR/server.log for errors."
+            fi
+        fi
+        ;;
+    stop)
+        echo "Stopping Mobile IDE..."
+        pkill -f mobile-agy 2>/dev/null || true
+        echo "Mobile IDE stopped."
+        ;;
+    restart)
+        echo "Restarting Mobile IDE..."
+        pkill -f mobile-agy 2>/dev/null || true
+        sleep 1
+        cd "\$INSTALL_DIR"
+        ./start.sh > server.log 2>&1 &
+        sleep 2
+        echo "Mobile IDE restarted."
+        ;;
+    status)
+        PID=\$(pgrep -f "mobile-agy" || true)
+        if [ -n "\$PID" ]; then
+            echo "========================================="
+            echo "        Mobile IDE Status: RUNNING       "
+            echo "========================================="
+            echo "PID      : \$PID"
+            if [ -f "\$INSTALL_DIR/.env" ]; then
+                PORT=\$(grep -E "^PORT=" "\$INSTALL_DIR/.env" | cut -d'=' -f2)
+                PASSWORD=\$(grep -E "^PASSWORD=" "\$INSTALL_DIR/.env" | cut -d'=' -f2)
+                echo "Port     : \$PORT"
+                echo "Password : \$PASSWORD"
+                echo "Address  : http://localhost:\$PORT"
+            fi
+            echo "========================================="
+        else
+            echo "========================================="
+            echo "        Mobile IDE Status: STOPPED       "
+            echo "========================================="
+        fi
+        ;;
+    logs)
+        echo "=== Mobile IDE Authentication Logs ==="
+        if [ -f "\$INSTALL_DIR/server.log" ]; then
+            grep -i "\[AUTH" "\$INSTALL_DIR/server.log" | tail -n 100
+        else
+            echo "No server.log found in \$INSTALL_DIR"
+        fi
+        ;;
+    log)
+        if [ -f "\$INSTALL_DIR/server.log" ]; then
+            if [ "\$2" == "-f" ] || [ "\$2" == "follow" ]; then
+                tail -f "\$INSTALL_DIR/server.log"
+            else
+                tail -n 100 "\$INSTALL_DIR/server.log"
+            fi
+        else
+            echo "No server.log found in \$INSTALL_DIR"
+        fi
+        ;;
+    update)
+        echo "Updating Mobile IDE..."
+        curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=\$(date +%s)" | bash
+        ;;
+    uninstall)
+        echo "Stopping Mobile IDE..."
+        pkill -f mobile-agy 2>/dev/null || true
+        rm -f "\$HOME/.local/bin/agy-mobile"
+        echo "Removed global command 'agy-mobile'."
+        
+        if [ -c /dev/tty ]; then
+            read -p "Do you want to delete the installation directory (\$INSTALL_DIR)? (y/N): " choice < /dev/tty
+        else
+            choice="n"
+        fi
+        if [[ "\$choice" =~ ^[Yy]$ ]]; then
+            rm -rf "\$INSTALL_DIR"
+            echo "Installation directory (\$INSTALL_DIR) deleted."
+        else
+            echo "Installation directory left intact."
+        fi
+        echo "Mobile IDE successfully uninstalled."
+        ;;
+    *)
+        echo "Usage: agy-mobile {start|stop|restart|status|log|logs|update|uninstall}"
+        exit 1
+        ;;
+esac
+EOF
+    chmod +x "$HOME/.local/bin/agy-mobile"
+}
+
 # 2.5. Mriksa apa perlu update (Bandingake ukuran file lokal karo remot)
 if [ -f "$BINARY_NAME" ]; then
     LOCAL_SIZE=$(wc -c < "$BINARY_NAME")
@@ -75,6 +216,9 @@ if [ "$LOCAL_SIZE" -gt 0 ]; then
         echo "Aplikasi wis versi paling anyar (Ukuran: $LOCAL_SIZE byte)."
         echo "Ora ana update sing perlu diundhuh."
         echo "================================================="
+        
+        # Regenerate wrapper scripts to make sure new commands are updated
+        generate_scripts
         
         # Cek apa server wis mlaku
         SERVER_RUNNING=false
@@ -231,144 +375,8 @@ PASSWORD=$GEN_PASSWORD
 EOT
 fi
 
-# Nggawe/nganyari script start.sh
-cat <<'EOT' > start.sh
-#!/bin/bash
-# Tambah ~/.local/bin menyang PATH yen durung ana
-if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    export PATH="$HOME/.local/bin:$PATH"
-fi
-
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
-
-if [ -f ./mobile-agy.exe ]; then
-    ./mobile-agy.exe
-else
-    ./mobile-agy
-fi
-EOT
-chmod +x start.sh
-
-# Nggawe/nganyari script update.sh supaya user gampang nglakokake update
-cat <<'EOT' > update.sh
-#!/bin/bash
-echo "Mulai nglakokake update Mobile IDE..."
-curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=$(date +%s)" | bash
-EOT
-chmod +x update.sh
-
-# Nggawe command global 'agy-mobile' ing ~/.local/bin/agy-mobile
-echo "Nggawe script wrapper global 'agy-mobile'..."
-mkdir -p "$HOME/.local/bin"
-ABS_INSTALL_DIR="$(pwd)"
-cat <<EOF > "$HOME/.local/bin/agy-mobile"
-#!/bin/bash
-# Antigravity Mobile IDE Wrapper CLI
-
-INSTALL_DIR="$ABS_INSTALL_DIR"
-
-case "\$1" in
-    start)
-        echo "Starting Mobile IDE..."
-        if pgrep -f "mobile-agy" > /dev/null; then
-            echo "Mobile IDE is already running."
-        else
-            cd "\$INSTALL_DIR"
-            ./start.sh > server.log 2>&1 &
-            sleep 2
-            if pgrep -f "mobile-agy" > /dev/null; then
-                echo "Mobile IDE started successfully."
-            else
-                echo "Failed to start Mobile IDE. Check \$INSTALL_DIR/server.log for errors."
-            fi
-        fi
-        ;;
-    stop)
-        echo "Stopping Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
-        echo "Mobile IDE stopped."
-        ;;
-    restart)
-        echo "Restarting Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
-        sleep 1
-        cd "\$INSTALL_DIR"
-        ./start.sh > server.log 2>&1 &
-        sleep 2
-        echo "Mobile IDE restarted."
-        ;;
-    status)
-        PID=\$(pgrep -f "mobile-agy" || true)
-        if [ -n "\$PID" ]; then
-            echo "========================================="
-            echo "        Mobile IDE Status: RUNNING       "
-            echo "========================================="
-            echo "PID      : \$PID"
-            if [ -f "\$INSTALL_DIR/.env" ]; then
-                PORT=\$(grep -E "^PORT=" "\$INSTALL_DIR/.env" | cut -d'=' -f2)
-                PASSWORD=\$(grep -E "^PASSWORD=" "\$INSTALL_DIR/.env" | cut -d'=' -f2)
-                echo "Port     : \$PORT"
-                echo "Password : \$PASSWORD"
-                echo "Address  : http://localhost:\$PORT"
-            fi
-            echo "========================================="
-        else
-            echo "========================================="
-            echo "        Mobile IDE Status: STOPPED       "
-            echo "========================================="
-        fi
-        ;;
-    logs)
-        echo "=== Mobile IDE Authentication Logs ==="
-        if [ -f "\$INSTALL_DIR/server.log" ]; then
-            grep -i "\[AUTH" "\$INSTALL_DIR/server.log" | tail -n 100
-        else
-            echo "No server.log found in \$INSTALL_DIR"
-        fi
-        ;;
-    log)
-        if [ -f "\$INSTALL_DIR/server.log" ]; then
-            if [ "\$2" == "-f" ] || [ "\$2" == "follow" ]; then
-                tail -f "\$INSTALL_DIR/server.log"
-            else
-                tail -n 100 "\$INSTALL_DIR/server.log"
-            fi
-        else
-            echo "No server.log found in \$INSTALL_DIR"
-        fi
-        ;;
-    update)
-        echo "Updating Mobile IDE..."
-        curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=\$(date +%s)" | bash
-        ;;
-    uninstall)
-        echo "Stopping Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
-        rm -f "\$HOME/.local/bin/agy-mobile"
-        echo "Removed global command 'agy-mobile'."
-        
-        if [ -c /dev/tty ]; then
-            read -p "Do you want to delete the installation directory (\$INSTALL_DIR)? (y/N): " choice < /dev/tty
-        else
-            choice="n"
-        fi
-        if [[ "\$choice" =~ ^[Yy]$ ]]; then
-            rm -rf "\$INSTALL_DIR"
-            echo "Installation directory (\$INSTALL_DIR) deleted."
-        else
-            echo "Installation directory left intact."
-        fi
-        echo "Mobile IDE successfully uninstalled."
-        ;;
-    *)
-        echo "Usage: agy-mobile {start|stop|restart|status|log|logs|update|uninstall}"
-        exit 1
-        ;;
-esac
-EOF
-chmod +x "$HOME/.local/bin/agy-mobile"
+# Nggawe/nganyari kabeh script start.sh, update.sh, lan agy-mobile
+generate_scripts
 
 # 8. Nglakokake server ing background
 echo "Nglakokake server Mobile IDE ing port: $PORT..."
