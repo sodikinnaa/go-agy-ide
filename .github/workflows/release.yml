@@ -27,15 +27,15 @@ jobs:
         run: |
           mkdir -p dist
           # Linux AMD64 (Static Build, CGO disabled for maximum glibc compatibility)
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-amd64 main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-amd64
           # Linux ARM64 (for Raspberry Pi, Termux, etc.)
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-arm64 main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-linux-arm64
           # MacOS AMD64
-          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-amd64 main.go
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-amd64
           # MacOS ARM64 (Apple Silicon M1/M2/M3)
-          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-arm64 main.go
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/mobile-agy-darwin-arm64
           # Windows AMD64
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-windows-amd64.exe main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mobile-agy-windows-amd64.exe
 
       - name: Set Tag Name
         id: tag
