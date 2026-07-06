@@ -241,14 +241,20 @@
             <!-- Quick Commands Bar -->
             <div class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
                 <span class="text-[10px] text-slate-500 self-center mr-1 font-semibold uppercase">Quick:</span>
-                <button onclick="executeCommand('ss -tln')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status port sing listening">
-                    ss -tln
+                <button onclick="executeCommand('agy-mobile status')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status server Mobile IDE">
+                    agy-mobile status
+                </button>
+                <button onclick="executeCommand('agy-mobile log')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco 100 baris log server pungkasan">
+                    agy-mobile log
+                </button>
+                <button onclick="executeCommand('agy-mobile logs')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco log otentikasi pungkasan">
+                    agy-mobile logs
                 </button>
                 <button onclick="executeCommand('cat password.txt')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco password keamanan">
                     cat password.txt
                 </button>
-                <button onclick="executeCommand('./update.sh')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Update Mobile IDE menyang versi paling anyar">
-                    ./update.sh
+                <button onclick="executeCommand('agy-mobile update')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Update Mobile IDE menyang versi paling anyar">
+                    agy-mobile update
                 </button>
             </div>
             <!-- Terminal Run Command -->
