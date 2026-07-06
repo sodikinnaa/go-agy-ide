@@ -332,6 +332,12 @@
             // Initial refresh of workspace
             refreshWorkspace();
             loadAvailableModels();
+
+            // Restore active conversation session if saved
+            const savedAgentId = localStorage.getItem('activeConversationId');
+            if (savedAgentId) {
+                selectConversation(savedAgentId);
+            }
             
             // Auto refresh workspace files list silently every 2 seconds to keep it real-time!
             setInterval(() => {
@@ -859,6 +865,7 @@
                             const list = await histRes.json();
                             if (list.length > 0 && !activeConversationId) {
                                 activeConversationId = list[0].id;
+                                localStorage.setItem('activeConversationId', activeConversationId);
                                 logToTerminal(`[SYSTEM] Sesi obrolan iki nyambung menyang ID: ${activeConversationId}`);
                             }
                         }
@@ -1118,6 +1125,7 @@
 
         function startNewChat() {
             activeConversationId = "";
+            localStorage.removeItem('activeConversationId');
             const container = document.getElementById('chat-messages');
             container.innerHTML = `
                 <!-- Greeting -->
@@ -1235,6 +1243,7 @@
                 logToTerminal(`[SYSTEM] Agent ${id.substring(0,8)} deleted.`);
                 if (activeConversationId === id) {
                     activeConversationId = "";
+                    localStorage.removeItem('activeConversationId');
                     document.getElementById('chat-messages').innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Obrolan kosong</div>';
                 }
                 loadChatHistoryList();
@@ -1259,6 +1268,7 @@
                 const detail = await res.json();
                 
                 activeConversationId = id;
+                localStorage.setItem('activeConversationId', id);
                 messages.innerHTML = '';
 
                 if (detail.messages.length === 0) {
