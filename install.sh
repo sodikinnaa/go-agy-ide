@@ -320,6 +320,14 @@ case "\$1" in
             echo "========================================="
         fi
         ;;
+    logs)
+        echo "=== Mobile IDE Authentication Logs ==="
+        if [ -f "\$INSTALL_DIR/server.log" ]; then
+            grep -i "\[AUTH" "\$INSTALL_DIR/server.log" | tail -n 100
+        else
+            echo "No server.log found in \$INSTALL_DIR"
+        fi
+        ;;
     log)
         if [ -f "\$INSTALL_DIR/server.log" ]; then
             if [ "\$2" == "-f" ] || [ "\$2" == "follow" ]; then
@@ -355,7 +363,7 @@ case "\$1" in
         echo "Mobile IDE successfully uninstalled."
         ;;
     *)
-        echo "Usage: agy-mobile {start|stop|restart|status|log|update|uninstall}"
+        echo "Usage: agy-mobile {start|stop|restart|status|log|logs|update|uninstall}"
         exit 1
         ;;
 esac

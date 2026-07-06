@@ -78,6 +78,11 @@ Sawise instalasi, njenengan bisa nggunakake perintah global `agy-mobile` saka ng
   agy-mobile log
   ```
   *Bisa uga nggunakake `agy-mobile log -f` kanggo streaming log sacara real-time.*
+* **Maca log khusus otentikasi/login Google**:
+  ```bash
+  agy-mobile logs
+  ```
+  *Nampilake mung baris log sing ngemot informasi otentikasi Google.*
 * **Nganyari (update) server menyang versi paling anyar**:
   ```bash
   agy-mobile update
