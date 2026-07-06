@@ -404,6 +404,11 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 				          strings.Contains(lowerOut, "color theme") ||
 				          strings.Contains(lowerOut, "arrow keys to navigate") ||
 				          strings.Contains(lowerOut, "enter to select") ||
+				          strings.Contains(lowerOut, "shift+up/down") ||
+				          strings.Contains(lowerOut, "navigate") ||
+				          strings.Contains(lowerOut, "template") ||
+				          strings.Contains(lowerOut, "choose template") ||
+				          strings.Contains(lowerOut, "select template") ||
 				          strings.Contains(lowerOut, "[y/n]") ||
 				          strings.Contains(lowerOut, "[yes/no]") {
 					log.Printf("[AUTH] Interactive prompt detected. Sending '\\n' to accept default...")
