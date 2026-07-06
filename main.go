@@ -414,7 +414,9 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 		activeAuthCmd.Process.Kill()
 	}
 
-	cmd := exec.Command(findAgyPath(), "--print", "hello", "--dangerously-skip-permissions")
+	agyPath := findAgyPath()
+	cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
+	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ() // Propagasi environment variable lengkap (kaya PATH lan HOME)
 
