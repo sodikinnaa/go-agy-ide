@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+VERSION="v1.1.1"
+
 # Tampilan header
 echo "================================================="
 echo "        Mobile IDE One-Line Installer           "
@@ -140,6 +142,7 @@ case "\$1" in
             echo "========================================="
             echo "        Mobile IDE Status: RUNNING       "
             echo "========================================="
+            echo "Version  : $VERSION"
             echo "PID      : \$PID"
             if [ -f "\$INSTALL_DIR/.env" ]; then
                 PORT=\$(grep -E "^PORT=" "\$INSTALL_DIR/.env" | cut -d'=' -f2)
