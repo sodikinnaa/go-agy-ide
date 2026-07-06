@@ -88,13 +88,28 @@ if [ "$LOCAL_SIZE" -gt 0 ]; then
             fi
         fi
         
+        # Moco port lan password saka .env
+        PORT="8080"
+        GEN_PASSWORD=""
+        if [ -f .env ]; then
+            PORT=$(grep -E "^PORT=" .env | cut -d'=' -f2 || echo "8080")
+            GEN_PASSWORD=$(grep -E "^PASSWORD=" .env | cut -d'=' -f2 || echo "")
+        fi
+
         if [ "$SERVER_RUNNING" = false ]; then
             echo "Miwiti server Mobile IDE..."
             ./start.sh > server.log 2>&1 &
             sleep 2
-        else
-            echo "Server wis mlaku ing background."
         fi
+
+        echo "-------------------------------------------------"
+        echo "Port Server    : $PORT"
+        echo "Sandi Akses    : $GEN_PASSWORD"
+        echo "-------------------------------------------------"
+        echo "Server wis mlaku ing background!"
+        echo "Bukak browser lan bukak alamat iki:"
+        echo "  http://localhost:$PORT"
+        echo "================================================="
         exit 0
     fi
 fi
