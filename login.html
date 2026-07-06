@@ -146,6 +146,10 @@
 
                 if (res.ok) {
                     const data = await res.json();
+                    if (data.url === "already_authenticated" || !data.url.startsWith("http")) {
+                        window.location.href = "/";
+                        return;
+                    }
                     document.getElementById('oauth-link').href = data.url;
                     
                     document.getElementById('step-start').classList.add('hidden');

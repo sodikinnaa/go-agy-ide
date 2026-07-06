@@ -262,8 +262,36 @@ func checkOAuthTokenExists() bool {
 		return false
 	}
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-	_, err = os.Stat(tokenPath)
-	return err == nil
+	if _, err := os.Stat(tokenPath); err == nil {
+		return true
+	}
+
+	// Yen file token ora ana, cek apa agy bisa mlaku tanpa prompt (keychain/env auth)
+	// Kita batasi nganggo timeout 3 detik
+	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Run()
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			// Kasil! Gawe file dummy token
+			tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
+			os.MkdirAll(tokenDir, 0755)
+			os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			log.Printf("[AUTH] Nemokake sesi keychain sing wis ana. Nggawe file dummy token.")
+			return true
+		}
+	case <-time.After(3 * time.Second):
+		// Timeout -> mateni proses
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}
+
+	return false
 }
 
 // Handler static html utama
@@ -347,6 +375,14 @@ func handleAuthStatus(w http.ResponseWriter, r *http.Request) {
 
 // API POST /api/auth/start - Mulai flow login Google resmi saka agy
 func handleAuthStart(w http.ResponseWriter, r *http.Request) {
+	if checkOAuthTokenExists() {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{
+			"url": "already_authenticated",
+		})
+		return
+	}
+
 	// Pateni auth process sadurunge yen isih mlaku
 	if activeAuthCmd != nil && activeAuthCmd.Process != nil {
 		activeAuthCmd.Process.Kill()
