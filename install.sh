@@ -59,6 +59,46 @@ if [ "$(basename "$(pwd)")" != "mobile-ide" ]; then
     cd "$INSTALL_DIR"
 fi
 
+# 2.5. Mriksa apa perlu update (Bandingake ukuran file lokal karo remot)
+if [ -f "$BINARY_NAME" ]; then
+    LOCAL_SIZE=$(wc -c < "$BINARY_NAME")
+else
+    LOCAL_SIZE=0
+fi
+
+if [ "$LOCAL_SIZE" -gt 0 ]; then
+    echo "Mriksa versi anyar ing GitHub..."
+    REMOTE_SIZE=$(curl -sIL "$BINARY_URL" | grep -i "^content-length:" | tail -n 1 | awk '{print $2}' | tr -d '\r' || echo "")
+    
+    if [ -n "$REMOTE_SIZE" ] && [ "$LOCAL_SIZE" -eq "$REMOTE_SIZE" ]; then
+        echo "================================================="
+        echo "Aplikasi wis versi paling anyar (Ukuran: $LOCAL_SIZE byte)."
+        echo "Ora ana update sing perlu diundhuh."
+        echo "================================================="
+        
+        # Cek apa server wis mlaku
+        SERVER_RUNNING=false
+        if [[ "$BINARY_NAME" == *.exe ]]; then
+            if ps -ef | grep mobile-agy.exe | grep -v grep > /dev/null; then
+                SERVER_RUNNING=true
+            fi
+        else
+            if ps -ef | grep mobile-agy | grep -v grep > /dev/null; then
+                SERVER_RUNNING=true
+            fi
+        fi
+        
+        if [ "$SERVER_RUNNING" = false ]; then
+            echo "Miwiti server Mobile IDE..."
+            ./start.sh > server.log 2>&1 &
+            sleep 2
+        else
+            echo "Server wis mlaku ing background."
+        fi
+        exit 0
+    fi
+fi
+
 # 3. Mandhegake proses lawas sarta ngilangi file lawas (Nyegah error lock/write permission)
 echo "Mriksa lan ngresiki proses lawas..."
 if [[ "$BINARY_NAME" == *.exe ]]; then
