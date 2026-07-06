@@ -255,6 +255,32 @@ func generateRandomPassword(length int) string {
 	return string(bytes)
 }
 
+// Goleki path agy binary sing bener
+func findAgyPath() string {
+	// 1. Cek yen wis ana ing PATH
+	if p, err := exec.LookPath("agy"); err == nil {
+		return p
+	}
+
+	// 2. Cek ing folder local bin pangguna
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		p := filepath.Join(homeDir, ".local", "bin", "agy")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+
+	// 3. Cek folder default Codespace /home/codespace/.local/bin
+	p := "/home/codespace/.local/bin/agy"
+	if _, err := os.Stat(p); err == nil {
+		return p
+	}
+
+	// 4. Balikake default "agy" yen ora ditemokake
+	return "agy"
+}
+
 // Cek apa token Google OAuth Antigravity wis ana ing server
 func checkOAuthTokenExists() bool {
 	homeDir, err := os.UserHomeDir()
@@ -268,7 +294,7 @@ func checkOAuthTokenExists() bool {
 
 	// Yen file token ora ana, cek apa agy bisa mlaku tanpa prompt (keychain/env auth)
 	// Kita batasi nganggo timeout 3 detik
-	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
+	cmd := exec.Command(findAgyPath(), "--print", "hello", "--dangerously-skip-permissions")
 	done := make(chan error, 1)
 	go func() {
 		done <- cmd.Run()
@@ -388,7 +414,7 @@ func handleAuthStart(w http.ResponseWriter, r *http.Request) {
 		activeAuthCmd.Process.Kill()
 	}
 
-	cmd := exec.Command("agy", "--print", "hello", "--dangerously-skip-permissions")
+	cmd := exec.Command(findAgyPath(), "--print", "hello", "--dangerously-skip-permissions")
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ() // Propagasi environment variable lengkap (kaya PATH lan HOME)
 
@@ -1056,7 +1082,7 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--continue")
 	}
 
-	cmd := exec.Command("agy", args...)
+	cmd := exec.Command(findAgyPath(), args...)
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ()
 
