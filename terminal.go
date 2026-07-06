@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
@@ -31,7 +32,19 @@ func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cmd := exec.Command("bash", "-c", command)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("bash"); err == nil {
+			cmd = exec.Command("bash", "-c", command)
+		} else if _, err := exec.LookPath("powershell"); err == nil {
+			cmd = exec.Command("powershell", "-Command", command)
+		} else {
+			cmd = exec.Command("cmd", "/c", command)
+		}
+	} else {
+		cmd = exec.Command("bash", "-c", command)
+	}
+
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ()
 
@@ -58,6 +71,29 @@ func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	processDone := make(chan struct{})
+	go func() {
+		if cmd.Process != nil {
+			cmd.Process.Wait()
+		}
+		close(processDone)
+		// Close the pipe to force Read() to unblock if held open by background daemons
+		stdoutPipe.Close()
+	}()
+
+	// Monitor client disconnection to clean up running processes
+	go func() {
+		select {
+		case <-processDone:
+			// Process exited normally
+		case <-r.Context().Done():
+			// Client disconnected, terminate process group/process to prevent leaks
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
+		}
+	}()
+
 	buf := make([]byte, 256)
 	for {
 		n, err := stdoutPipe.Read(buf)
@@ -70,6 +106,7 @@ func handleRunCommandStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Wait to clean up process resources
 	cmd.Wait()
 }
 
