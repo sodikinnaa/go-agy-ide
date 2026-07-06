@@ -88,11 +88,17 @@ curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install
 EOT
     chmod +x update.sh
 
-    # Nggawe command global 'agy-mobile' ing ~/.local/bin/agy-mobile
-    echo "Nggawe script wrapper global 'agy-mobile'..."
-    mkdir -p "$HOME/.local/bin"
+    # Nggawe command global 'agy-mobile'
+    CURRENT_AGY_MOBILE_PATH=$(which agy-mobile 2>/dev/null || echo "")
+    if [ -n "$CURRENT_AGY_MOBILE_PATH" ] && [ -w "$CURRENT_AGY_MOBILE_PATH" ]; then
+        TARGET_WRAPPER="$CURRENT_AGY_MOBILE_PATH"
+    else
+        TARGET_WRAPPER="$HOME/.local/bin/agy-mobile"
+        mkdir -p "$HOME/.local/bin"
+    fi
+    echo "Nggawe script wrapper global 'agy-mobile' ing $TARGET_WRAPPER..."
     ABS_INSTALL_DIR="$(pwd)"
-    cat <<EOF > "$HOME/.local/bin/agy-mobile"
+    cat <<EOF > "$TARGET_WRAPPER"
 #!/bin/bash
 # Antigravity Mobile IDE Wrapper CLI
 
@@ -175,8 +181,14 @@ case "\$1" in
     uninstall)
         echo "Stopping Mobile IDE..."
         pkill -f mobile-agy 2>/dev/null || true
-        rm -f "\$HOME/.local/bin/agy-mobile"
-        echo "Removed global command 'agy-mobile'."
+        CURRENT_AGY_MOBILE_PATH=\$(which agy-mobile 2>/dev/null || echo "")
+        if [ -n "\$CURRENT_AGY_MOBILE_PATH" ] && [ -w "\$CURRENT_AGY_MOBILE_PATH" ]; then
+            rm -f "\$CURRENT_AGY_MOBILE_PATH"
+            echo "Removed global command '\$CURRENT_AGY_MOBILE_PATH'."
+        else
+            rm -f "\$HOME/.local/bin/agy-mobile"
+            echo "Removed global command 'agy-mobile'."
+        fi
         
         if [ -c /dev/tty ]; then
             read -p "Do you want to delete the installation directory (\$INSTALL_DIR)? (y/N): " choice < /dev/tty
@@ -197,7 +209,7 @@ case "\$1" in
         ;;
 esac
 EOF
-    chmod +x "$HOME/.local/bin/agy-mobile"
+    chmod +x "$TARGET_WRAPPER"
 }
 
 # 2.5. Mriksa apa perlu update (Bandingake ukuran file lokal karo remot)
