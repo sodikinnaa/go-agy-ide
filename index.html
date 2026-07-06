@@ -806,10 +806,14 @@
 
                 if (!response.ok) throw new Error('API server returned error');
 
-                botBubble.innerHTML = "";
+                // Tampilkan spinner 'lagi mikir' nalika ngenteni chunk pertama
+                botBubble.innerHTML = '<span class="text-xs text-slate-400 flex items-center"><i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin mr-1.5 shrink-0 text-brand-accent"></i>Agen lagi mikir...</span>';
+                lucide.createIcons();
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
+                let firstChunk = true;
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -818,8 +822,15 @@
                     const chunk = decoder.decode(value, { stream: true });
                     fullText += chunk;
                     
-                    // Render markdown dynamically
-                    botBubble.innerHTML = marked.parse(fullText);
+                    if (firstChunk && fullText.trim() !== "") {
+                        botBubble.innerHTML = "";
+                        firstChunk = false;
+                    }
+
+                    if (!firstChunk) {
+                        // Render markdown dynamically
+                        botBubble.innerHTML = marked.parse(fullText);
+                    }
 
                     // Add copy/apply buttons to dynamic pre/code blocks
                     botBubble.querySelectorAll('pre code').forEach(codeEl => {
