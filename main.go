@@ -100,6 +100,7 @@ func main() {
 	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
+	http.HandleFunc("/api/models", authMiddleware(handleModelsList))
 	http.HandleFunc("/preview/", authMiddleware(handlePreviewFile))
 
 	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
@@ -1007,7 +1008,16 @@ func handleChatHistoryDetail(w http.ResponseWriter, r *http.Request) {
 	transcriptPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", id, ".system_generated", "logs", "transcript.jsonl")
 	file, err := os.Open(transcriptPath)
 	if err != nil {
-		http.Error(w, "Obrolan ora ketemu", http.StatusNotFound)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ChatHistoryDetail{
+			ID: id,
+			Messages: []ChatMessage{
+				{
+					Role:    "model",
+					Content: "⚠️ Berkas detail obrolan (transcript) ora ditemokake ing PC lokal iki. Obrolan iki kemungkinan digawe ing Codespace utawa piranti liyane saengga log riwayate ora sinkron ing kene.",
+				},
+			},
+		})
 		return
 	}
 	defer file.Close()
@@ -1227,4 +1237,56 @@ func handlePreviewFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeFile(w, r, absPath)
+}
+
+// API GET /api/models - Maca daftar model sing kasedhiya saka agy models
+func handleModelsList(w http.ResponseWriter, r *http.Request) {
+	agyPath := findAgyPath()
+	cmdStr := fmt.Sprintf("%s models", agyPath)
+	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+	cmd.Env = os.Environ()
+
+	outputBytes, err := cmd.Output()
+	if err != nil {
+		// Fallback yen gagal nganggo script
+		cmdDirect := exec.Command(findAgyPath(), "models")
+		cmdDirect.Env = os.Environ()
+		outputBytes, err = cmdDirect.Output()
+	}
+
+	if err != nil {
+		http.Error(w, "Gagal ngakses daftar model: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	lines := strings.Split(string(outputBytes), "\n")
+	var models []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Saring spinner utawa pesen inisialisasi "Fetching available models..."
+		if strings.Contains(trimmed, "Fetching") || strings.Contains(trimmed, "⠋") || strings.Contains(trimmed, "⠙") || strings.Contains(trimmed, "⠹") || strings.Contains(trimmed, "⠸") || strings.Contains(trimmed, "⠼") || strings.Contains(trimmed, "⠴") || strings.Contains(trimmed, "⠦") || strings.Contains(trimmed, "⠧") || strings.Contains(trimmed, "⠇") || strings.Contains(trimmed, "⠏") {
+			continue
+		}
+		models = append(models, trimmed)
+	}
+
+	// Fallback list yen asile kosong
+	if len(models) == 0 {
+		models = []string{
+			"Gemini 3.5 Flash (Medium)",
+			"Gemini 3.5 Flash (High)",
+			"Gemini 3.5 Flash (Low)",
+			"Gemini 3.1 Pro (Low)",
+			"Gemini 3.1 Pro (High)",
+			"Claude Sonnet 4.6 (Thinking)",
+			"Claude Opus 4.6 (Thinking)",
+			"GPT-OSS 120B (Medium)",
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models)
 }

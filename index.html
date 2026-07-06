@@ -227,7 +227,7 @@
         </section>
 
         <!-- Extra Pane: Terminal / Output Console -->
-        <section id="panel-terminal" class="w-full bg-brand-dark/95 border-l border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:hidden flex">
+        <section id="panel-terminal" class="w-full md:w-80 bg-brand-dark/95 border-l border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
             <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0">
                 <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Terminal Console</span>
                 <button onclick="clearTerminal()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear console">
@@ -299,6 +299,8 @@
         let editorInstance = null;
         let activeFilePath = "";
         let currentTab = "code";
+        let lastWorkspaceFilesJSON = "";
+        let collapsedFolders = {};
 
         // Initialize Lucide icons
         lucide.createIcons();
@@ -323,6 +325,12 @@
 
             // Initial refresh of workspace
             refreshWorkspace();
+            loadAvailableModels();
+            
+            // Auto refresh workspace files list silently every 2 seconds to keep it real-time!
+            setInterval(() => {
+                refreshWorkspace(true);
+            }, 2000);
             
             // Set up responsive tabs
             adjustLayoutForViewport();
@@ -415,9 +423,110 @@
         }
 
         // File tree fetching
-        async function refreshWorkspace() {
+        // Build tree helper
+        function buildTree(files) {
+            const root = { name: "root", path: "", isDir: true, children: [] };
+            const sortedFiles = [...files].sort((a, b) => a.path.split('/').length - b.path.split('/').length);
+            const nodeMap = { "": root };
+            
+            sortedFiles.forEach(file => {
+                const parts = file.path.split('/');
+                const parentPath = parts.slice(0, parts.length - 1).join('/');
+                
+                const node = {
+                    name: file.name,
+                    path: file.path,
+                    isDir: file.isDir,
+                    children: []
+                };
+                
+                nodeMap[file.path] = node;
+                
+                const parent = nodeMap[parentPath];
+                if (parent) {
+                    parent.children.push(node);
+                } else {
+                    root.children.push(node);
+                }
+            });
+            
+            return root;
+        }
+
+        // Toggle folder collapsible state
+        function toggleFolder(path) {
+            collapsedFolders[path] = !collapsedFolders[path];
+            refreshWorkspace();
+        }
+
+        // Recursive tree rendering
+        function renderTree(node, depth, container) {
+            const sortedChildren = [...node.children].sort((a, b) => {
+                if (a.isDir && !b.isDir) return -1;
+                if (!a.isDir && b.isDir) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            sortedChildren.forEach(child => {
+                const row = document.createElement('div');
+                const paddingLeft = depth * 12 + 6;
+                row.className = `flex items-center justify-between p-1.5 rounded hover:bg-brand-panel group cursor-pointer transition text-sm ${activeFilePath === child.path ? 'bg-brand-border text-white animate-pulse-subtle' : 'text-slate-300'}`;
+                row.style.paddingLeft = `${paddingLeft}px`;
+                
+                const fileClickZone = document.createElement('div');
+                fileClickZone.className = "flex items-center space-x-2 flex-1 min-w-0";
+                if (child.isDir) {
+                    fileClickZone.onclick = () => toggleFolder(child.path);
+                } else {
+                    fileClickZone.onclick = () => openFile(child.path);
+                }
+
+                const icon = document.createElement('i');
+                icon.className = "w-4 h-4 shrink-0 text-slate-400";
+                
+                if (child.isDir) {
+                    const isCollapsed = collapsedFolders[child.path];
+                    icon.setAttribute('data-lucide', isCollapsed ? 'folder' : 'folder-open');
+                    icon.classList.add('text-yellow-500');
+                } else {
+                    icon.setAttribute('data-lucide', 'file-text');
+                }
+
+                const nameLabel = document.createElement('span');
+                nameLabel.className = "truncate text-xs font-mono";
+                nameLabel.innerText = child.name;
+
+                fileClickZone.appendChild(icon);
+                fileClickZone.appendChild(nameLabel);
+                row.appendChild(fileClickZone);
+
+                // Delete button
+                const delBtn = document.createElement('button');
+                delBtn.className = "p-1 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-500 transition rounded hover:bg-brand-border mr-1";
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteFile(child.path);
+                };
+                const delIcon = document.createElement('i');
+                delIcon.className = "w-3 h-3";
+                delIcon.setAttribute('data-lucide', 'trash');
+                delBtn.appendChild(delIcon);
+                row.appendChild(delBtn);
+                
+                container.appendChild(row);
+
+                if (child.isDir && !collapsedFolders[child.path]) {
+                    renderTree(child, depth + 1, container);
+                }
+            });
+        }
+
+        // File tree fetching
+        async function refreshWorkspace(silent = false) {
             const treeContainer = document.getElementById('file-tree');
-            treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Loading files...</div>';
+            if (!silent) {
+                treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Loading files...</div>';
+            }
 
             try {
                 const res = await fetch('/api/files');
@@ -425,55 +534,46 @@
                 let files = await res.json();
                 if (!files) files = [];
                 
+                const filesJSON = JSON.stringify(files);
+                if (silent && filesJSON === lastWorkspaceFilesJSON) {
+                    return; // No changes, do nothing
+                }
+                lastWorkspaceFilesJSON = filesJSON;
+                
                 if (files.length === 0) {
                     treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Workspace kosong</div>';
                     return;
                 }
 
                 treeContainer.innerHTML = '';
-                
-                // Group by folders and render
-                files.forEach(file => {
-                    const row = document.createElement('div');
-                    row.className = `flex items-center justify-between p-1.5 rounded hover:bg-brand-panel group cursor-pointer transition text-sm ${activeFilePath === file.path ? 'bg-brand-border text-white' : 'text-slate-300'}`;
-                    
-                    const fileClickZone = document.createElement('div');
-                    fileClickZone.className = "flex items-center space-x-2 flex-1 min-w-0";
-                    fileClickZone.onclick = () => openFile(file.path);
-
-                    const icon = document.createElement('i');
-                    icon.className = "w-4 h-4 shrink-0 text-slate-400";
-                    icon.setAttribute('data-lucide', file.isDir ? 'folder' : 'file-text');
-                    if (file.isDir) icon.classList.add('text-yellow-500');
-
-                    const nameLabel = document.createElement('span');
-                    nameLabel.className = "truncate text-xs font-mono";
-                    nameLabel.innerText = file.name;
-
-                    fileClickZone.appendChild(icon);
-                    fileClickZone.appendChild(nameLabel);
-                    row.appendChild(fileClickZone);
-
-                    // Delete button
-                    const delBtn = document.createElement('button');
-                    delBtn.className = "p-1 opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-500 transition rounded hover:bg-brand-border";
-                    delBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        deleteFile(file.path);
-                    };
-                    const delIcon = document.createElement('i');
-                    delIcon.className = "w-3 h-3";
-                    delIcon.setAttribute('data-lucide', 'trash');
-                    delBtn.appendChild(delIcon);
-                    
-                    row.appendChild(delBtn);
-                    treeContainer.appendChild(row);
-                });
-
+                const tree = buildTree(files);
+                renderTree(tree, 0, treeContainer);
                 lucide.createIcons();
 
             } catch (err) {
                 treeContainer.innerHTML = `<div class="text-center text-xs text-red-500 py-8">${err.message}</div>`;
+            }
+        }
+
+        // Fetch and populate available models dynamically
+        async function loadAvailableModels() {
+            const select = document.getElementById('model-select');
+            try {
+                const res = await fetch('/api/models');
+                if (!res.ok) throw new Error();
+                const models = await res.json();
+                
+                if (models && models.length > 0) {
+                    select.innerHTML = '';
+                    models.forEach(model => {
+                        const opt = document.createElement('option');
+                        opt.value = model;
+                        opt.innerText = model;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error("Gagal ngundhuh daftar model:", err);
             }
         }
 
