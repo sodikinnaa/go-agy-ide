@@ -212,63 +212,7 @@ EOF
     chmod +x "$TARGET_WRAPPER"
 }
 
-# 2.5. Mriksa apa perlu update (Bandingake ukuran file lokal karo remot)
-if [ -f "$BINARY_NAME" ]; then
-    LOCAL_SIZE=$(wc -c < "$BINARY_NAME")
-else
-    LOCAL_SIZE=0
-fi
-
-if [ "$LOCAL_SIZE" -gt 0 ]; then
-    echo "Mriksa versi anyar ing GitHub..."
-    REMOTE_SIZE=$(curl -sIL "$BINARY_URL" | grep -i "^content-length:" | tail -n 1 | awk '{print $2}' | tr -d '\r' || echo "")
-    
-    if [ -n "$REMOTE_SIZE" ] && [ "$LOCAL_SIZE" -eq "$REMOTE_SIZE" ]; then
-        echo "================================================="
-        echo "Aplikasi wis versi paling anyar (Ukuran: $LOCAL_SIZE byte)."
-        echo "Ora ana update sing perlu diundhuh."
-        echo "================================================="
-        
-        # Regenerate wrapper scripts to make sure new commands are updated
-        generate_scripts
-        
-        # Cek apa server wis mlaku
-        SERVER_RUNNING=false
-        if [[ "$BINARY_NAME" == *.exe ]]; then
-            if ps -ef | grep mobile-agy.exe | grep -v grep > /dev/null; then
-                SERVER_RUNNING=true
-            fi
-        else
-            if ps -ef | grep mobile-agy | grep -v grep > /dev/null; then
-                SERVER_RUNNING=true
-            fi
-        fi
-        
-        # Moco port lan password saka .env
-        PORT="8080"
-        GEN_PASSWORD=""
-        if [ -f .env ]; then
-            PORT=$(grep -E "^PORT=" .env | cut -d'=' -f2 || echo "8080")
-            GEN_PASSWORD=$(grep -E "^PASSWORD=" .env | cut -d'=' -f2 || echo "")
-        fi
-
-        if [ "$SERVER_RUNNING" = false ]; then
-            echo "Miwiti server Mobile IDE..."
-            ./start.sh > server.log 2>&1 &
-            sleep 2
-        fi
-
-        echo "-------------------------------------------------"
-        echo "Port Server    : $PORT"
-        echo "Sandi Akses    : $GEN_PASSWORD"
-        echo "-------------------------------------------------"
-        echo "Server wis mlaku ing background!"
-        echo "Bukak browser lan bukak alamat iki:"
-        echo "  http://localhost:$PORT"
-        echo "================================================="
-        exit 0
-    fi
-fi
+# 2.5. Mulai ngundhuh pre-compiled binary saka GitHub Releases
 
 # 3. Mandhegake proses lawas sarta ngilangi file lawas (Nyegah error lock/write permission)
 echo "Mriksa lan ngresiki proses lawas..."
