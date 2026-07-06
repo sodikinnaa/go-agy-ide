@@ -46,6 +46,8 @@ func main() {
 	http.HandleFunc("/api/chat", authMiddleware(handleChatStream))
 	http.HandleFunc("/api/chat/history", authMiddleware(handleChatHistoryList))
 	http.HandleFunc("/api/chat/history/detail", authMiddleware(handleChatHistoryDetail))
+	http.HandleFunc("/api/chat/stop", authMiddleware(handleChatStop))
+	http.HandleFunc("/api/chat/delete", authMiddleware(handleChatDelete))
 	http.HandleFunc("/api/run", authMiddleware(handleRunCommandStream))
 	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))

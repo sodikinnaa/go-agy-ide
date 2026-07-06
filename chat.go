@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type ChatRequest struct {
@@ -49,6 +50,9 @@ type TranscriptLine struct {
 	Content   string `json:"content"`
 	CreatedAt string `json:"created_at"`
 }
+
+var activeChatCmds = make(map[string]*exec.Cmd)
+var activeChatCmdsMu sync.Mutex
 
 func getHistoryFilePath() (string, error) {
 	homeDir, err := os.UserHomeDir()
@@ -275,9 +279,27 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--continue")
 	}
 
-	cmd := exec.Command(findAgyPath(), args...)
+	cmd := exec.CommandContext(r.Context(), findAgyPath(), args...)
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ()
+
+	convId := req.Conversation
+	if convId != "" {
+		activeChatCmdsMu.Lock()
+		if oldCmd, exists := activeChatCmds[convId]; exists && oldCmd != nil && oldCmd.Process != nil {
+			oldCmd.Process.Kill()
+		}
+		activeChatCmds[convId] = cmd
+		activeChatCmdsMu.Unlock()
+
+		defer func() {
+			activeChatCmdsMu.Lock()
+			if activeChatCmds[convId] == cmd {
+				delete(activeChatCmds, convId)
+			}
+			activeChatCmdsMu.Unlock()
+		}()
+	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -315,4 +337,79 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd.Wait()
+}
+
+// API POST /api/chat/stop - Mateni proses agen sing lagi mlaku
+func handleChatStop(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	activeChatCmdsMu.Lock()
+	cmd, exists := activeChatCmds[id]
+	if exists && cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
+		delete(activeChatCmds, id)
+		activeChatCmdsMu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Sukses mateni agen"))
+		return
+	}
+	activeChatCmdsMu.Unlock()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Agen ora lagi mlaku"))
+}
+
+// API DELETE /api/chat/delete - Mbusak agen sarta riwayate
+func handleChatDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id parameter", http.StatusBadRequest)
+		return
+	}
+
+	// 1. Mateni proses agen dhisik yen lagi mlaku
+	activeChatCmdsMu.Lock()
+	if cmd, exists := activeChatCmds[id]; exists && cmd != nil && cmd.Process != nil {
+		cmd.Process.Kill()
+		delete(activeChatCmds, id)
+	}
+	activeChatCmdsMu.Unlock()
+
+	// 2. Mbusak folder brain (transcript) saka agen kasebut
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		brainDir := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", filepath.Base(id))
+		os.RemoveAll(brainDir)
+	}
+
+	// 3. Mbusak entri saka history.jsonl
+	historyPath, err := getHistoryFilePath()
+	if err == nil {
+		file, err := os.Open(historyPath)
+		if err == nil {
+			var newLines []string
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := scanner.Text()
+				var entry HistoryEntry
+				if err := json.Unmarshal([]byte(line), &entry); err == nil {
+					if entry.ConversationID == id {
+						continue // Saring (buang) entri sing dicocogake
+					}
+				}
+				newLines = append(newLines, line)
+			}
+			file.Close()
+
+			// Tulis ulang history.jsonl
+			os.WriteFile(historyPath, []byte(strings.Join(newLines, "\n")+"\n"), 0644)
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sukses mbusak agen"))
 }
