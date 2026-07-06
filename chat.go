@@ -324,6 +324,10 @@ func handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Flush headers immediately so client fetch resolves and spinner starts
+	w.WriteHeader(http.StatusOK)
+	flusher.Flush()
+
 	buf := make([]byte, 256)
 	for {
 		n, err := stdoutPipe.Read(buf)
