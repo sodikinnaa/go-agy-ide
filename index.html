@@ -173,11 +173,11 @@
                     <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase">AGY Assistant</span>
                 </div>
                 <div class="flex items-center space-x-2">
-                    <button onclick="startNewChat()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Obrolan Anyar">
-                        <i data-lucide="plus" class="w-4 h-4"></i>
+                    <button onclick="startNewChat()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Tambah Agen Baru">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i>
                     </button>
-                    <button onclick="toggleChatHistory()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Riwayat Obrolan">
-                        <i data-lucide="history" class="w-4 h-4"></i>
+                    <button onclick="toggleChatHistory()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Daftar Agen Aktif">
+                        <i data-lucide="cpu" class="w-4 h-4"></i>
                     </button>
                     <select id="model-select" class="text-xs bg-brand-panel border border-brand-border px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-brand-500">
                         <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
@@ -191,14 +191,14 @@
             <!-- Chat History Overlay -->
             <div id="chat-history-pane" class="hidden flex-1 overflow-y-auto p-4 space-y-3 bg-brand-dark/95 border-b border-brand-border">
                 <div class="flex items-center justify-between mb-4">
-                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Riwayat Chat</span>
+                    <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Daftar Agen Aktif</span>
                     <button onclick="toggleChatHistory()" class="text-xs text-brand-accent hover:underline flex items-center space-x-1">
                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                         <span>Tutup</span>
                     </button>
                 </div>
                 <div id="history-items" class="space-y-2">
-                    <div class="text-xs text-slate-500 text-center py-4">Ngundhuh riwayat...</div>
+                    <div class="text-xs text-slate-500 text-center py-4">Ngundhuh dhaptar agen...</div>
                 </div>
             </div>
 
@@ -1157,7 +1157,7 @@
 
         async function loadChatHistoryList() {
             const itemsContainer = document.getElementById('history-items');
-            itemsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4"><i data-lucide="loader-2" class="w-4 h-4 animate-spin inline-block mr-1"></i>Ngundhuh riwayat...</div>';
+            itemsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4"><i data-lucide="loader-2" class="w-4 h-4 animate-spin inline-block mr-1"></i>Ngundhuh dhaptar agen...</div>';
             lucide.createIcons();
 
             try {
@@ -1167,7 +1167,7 @@
                 if (!list) list = [];
                 
                 if (list.length === 0) {
-                    itemsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">Ora ana riwayat chat</div>';
+                    itemsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">Ora ana agen aktif</div>';
                     return;
                 }
 
@@ -1175,19 +1175,25 @@
                 list.forEach(item => {
                     const date = new Date(item.timestamp);
                     const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    const isActive = item.id === activeConversationId;
                     
                     const div = document.createElement('div');
                     div.className = "p-3 bg-brand-panel hover:bg-brand-border border border-brand-border rounded-xl cursor-pointer transition duration-200 group flex items-start justify-between space-x-2";
                     
-                    if (item.id === activeConversationId) {
+                    if (isActive) {
                         div.classList.add('border-brand-accent/50', 'bg-brand-accent/5');
                     }
 
                     div.onclick = () => selectConversation(item.id);
                     div.innerHTML = `
                         <div class="flex-1 min-w-0">
-                            <div class="text-xs font-medium text-slate-200 truncate group-hover:text-brand-accent transition-colors">${escapeHtml(item.title)}</div>
-                            <div class="text-[10px] text-slate-500 mt-1">${dateStr}</div>
+                            <div class="flex items-center space-x-1.5 mb-1">
+                                <span class="w-2 h-2 rounded-full ${isActive ? 'bg-green-500 animate-pulse' : 'bg-slate-500'}"></span>
+                                <span class="text-[9px] font-mono text-slate-400 bg-brand-dark/50 border border-brand-border px-1 py-0.5 rounded">ID: ${item.id.substring(0, 8)}</span>
+                                <span class="text-[9px] text-slate-500">${isActive ? 'Active Chatting' : 'Idle'}</span>
+                            </div>
+                            <div class="text-xs font-semibold text-slate-200 truncate group-hover:text-brand-accent transition-colors">${escapeHtml(item.title)}</div>
+                            <div class="text-[9px] text-slate-500 mt-1">${dateStr}</div>
                         </div>
                         <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 group-hover:text-slate-300 shrink-0 self-center"></i>
                     `;
@@ -1195,7 +1201,7 @@
                 });
                 lucide.createIcons();
             } catch (err) {
-                itemsContainer.innerHTML = '<div class="text-xs text-red-400 text-center py-4">Gagal ngemot riwayat</div>';
+                itemsContainer.innerHTML = '<div class="text-xs text-red-400 text-center py-4">Gagal ngemot dhaptar agen</div>';
             }
         }
 
