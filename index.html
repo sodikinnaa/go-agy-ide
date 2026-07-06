@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.1</span>
+                    <span class="text-[10px] text-slate-400">v1.1.2</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -225,8 +225,12 @@
             <div class="p-3 border-t border-brand-border bg-brand-dark/40 shrink-0">
                 <form id="chat-form" onsubmit="sendPrompt(event)" class="flex items-end space-x-2">
                     <textarea id="chat-input" rows="2" placeholder="Tulis instruksi ing kene..." class="flex-1 bg-brand-panel border border-brand-border rounded-lg p-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none"></textarea>
-                    <button type="submit" id="chat-send-btn" class="p-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition duration-200 flex items-center justify-center self-end">
+                    <button type="submit" id="chat-send-btn" class="p-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition duration-200 flex items-center justify-center self-end" title="Kirim obrolan">
                         <i data-lucide="send" class="w-4 h-4"></i>
+                    </button>
+                    <!-- Stop Button -->
+                    <button type="button" id="chat-stop-btn" onclick="stopGeneratingChat()" class="hidden p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-200 flex items-center justify-center self-end" title="Mandhegake obrolan">
+                        <i data-lucide="square" class="w-4 h-4"></i>
                     </button>
                 </form>
             </div>
@@ -778,6 +782,8 @@
         }
 
         // Send chat prompt (streaming)
+        let activeChatAbortController = null;
+
         async function sendPrompt(e) {
             e.preventDefault();
             const input = document.getElementById('chat-input');
@@ -788,12 +794,17 @@
             appendChatMessage('user', promptVal, false);
 
             const sendBtn = document.getElementById('chat-send-btn');
-            sendBtn.disabled = true;
-            sendBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin text-white"></i>';
+            const stopBtn = document.getElementById('chat-stop-btn');
+            
+            // Toggle buttons
+            sendBtn.classList.add('hidden');
+            stopBtn.classList.remove('hidden');
             lucide.createIcons();
 
             // Create streaming response bubble
             const botBubble = appendChatMessage('bot', 'Connecting to Antigravity...');
+
+            activeChatAbortController = new AbortController();
 
             try {
                 const model = document.getElementById('model-select').value;
@@ -807,7 +818,8 @@
                         model: model,
                         conversation: activeConversationId,
                         continue: activeConversationId ? false : true
-                    })
+                    }),
+                    signal: activeChatAbortController.signal
                 });
 
                 if (!response.ok) throw new Error('API server returned error');
@@ -890,12 +902,42 @@
                 }, 1000);
 
             } catch (err) {
-                botBubble.innerText = `Error: ${err.message}`;
+                if (err.name === 'AbortError') {
+                    botBubble.innerHTML += `<div class="mt-2 text-xs text-yellow-500 font-semibold flex items-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i>Obrolan dimandhegake dening pangguna.</div>`;
+                } else {
+                    botBubble.innerText = `Error: ${err.message}`;
+                }
             } finally {
-                sendBtn.disabled = false;
-                sendBtn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i>';
+                sendBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                activeChatAbortController = null;
                 lucide.createIcons();
             }
+        }
+
+        async function stopGeneratingChat() {
+            if (activeChatAbortController) {
+                activeChatAbortController.abort();
+            }
+            
+            // Tell backend to kill the agent process immediately
+            if (activeConversationId) {
+                try {
+                    await fetch(`/api/chat/stop?id=${activeConversationId}`, { method: 'POST' });
+                } catch (e) {}
+            } else {
+                try {
+                    const res = await fetch('/api/chat/history');
+                    if (res.ok) {
+                        const list = await res.json();
+                        if (list.length > 0) {
+                            await fetch(`/api/chat/stop?id=${list[0].id}`, { method: 'POST' });
+                        }
+                    }
+                } catch (e) {}
+            }
+            
+            logToTerminal(`[SYSTEM] Obrolan dimandhegake.`);
         }
 
         // Terminal logging
@@ -1330,7 +1372,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.1";
+                const current = "v1.1.2";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1346,7 +1388,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.1).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.2).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1405,7 +1447,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.1</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.2</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

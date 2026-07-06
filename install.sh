@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="v1.1.1"
+VERSION="v1.1.2"
 
 # Tampilan header
 echo "================================================="
