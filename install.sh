@@ -217,30 +217,11 @@ EOF
 
 # 2.5. Mulai ngundhuh pre-compiled binary saka GitHub Releases
 
-# 3. Mandhegake proses lawas sarta ngilangi file lawas (Nyegah error lock/write permission)
-echo "Mriksa lan ngresiki proses lawas..."
-if [[ "$BINARY_NAME" == *.exe ]]; then
-    taskkill //F //IM mobile-agy.exe 2>/dev/null || true
-else
-    # Mandhegake proses mobile-agy sarta start.sh sing isih mlaku
-    pkill -f mobile-agy 2>/dev/null || true
-    # Ngenteni sedhela supaya proses bener-bener mati
-    sleep 1
-fi
-
-# Nyoba mbusak file lawas kanthi aman
-if [ -f "$BINARY_NAME" ]; then
-    rm -f "$BINARY_NAME" 2>/dev/null || {
-        echo "Pènget: Gagal mbusak $BINARY_NAME lawas secara langsung. Nyoba ngganti jeneng..."
-        mv -f "$BINARY_NAME" "${BINARY_NAME}.old" 2>/dev/null || true
-    }
-fi
-
-# 4. Ngundhuh binary anyar
+# 3. Ngundhuh binary anyar dhisik (Download first to minimize downtime!)
 echo "Ngundhuh binary kanggo OS: $OS ($ARCH)..."
 echo "Alamat URL: $BINARY_URL"
 
-# Ngundhuh menyang file sauntara (.tmp) dhisik kanggo nyegah error write lock
+# Ngundhuh menyang file sauntara (.tmp) dhisik
 TEMP_BINARY="${BINARY_NAME}.tmp"
 rm -f "$TEMP_BINARY"
 
@@ -253,17 +234,30 @@ if ! curl -fL --no-progress-meter "$BINARY_URL" -o "$TEMP_BINARY"; then
     exit 1
 fi
 
-# Ngalihake file sauntara dadi binary utama
-mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
-    echo "ERROR: Gagal mindhah binary sauntara menyang $BINARY_NAME."
-    echo "Kemungkinan file kasebut isih dienggo utawa ana masalah hak akses (permission)."
-    exit 1
-}
-
-# 5. Setel permission executable (khusus non-Windows)
 if [[ "$BINARY_NAME" != *.exe ]]; then
-    chmod +x "$BINARY_NAME"
+    chmod +x "$TEMP_BINARY"
 fi
+
+# 4. Mandhegake proses lawas (Mung sawise download binary anyar rampung!)
+echo "Mriksa lan ngresiki proses lawas..."
+if [[ "$BINARY_NAME" == *.exe ]]; then
+    taskkill //F //IM mobile-agy.exe 2>/dev/null || true
+else
+    # Mandhegake proses mobile-agy sarta start.sh sing isih mlaku
+    pkill -f mobile-agy 2>/dev/null || true
+    # Ngenteni sedhela supaya port dibebasake
+    sleep 0.5
+fi
+
+# 5. Ganteni binary lawas
+mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
+    echo "Pènget: Gagal ngganti binary utama secara langsung. Nyoba ngganti jeneng file lawas..."
+    mv -f "$BINARY_NAME" "${BINARY_NAME}.old" 2>/dev/null || true
+    mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
+        echo "ERROR: Gagal mindhah binary anyar menyang $BINARY_NAME."
+        exit 1
+    }
+}
 
 # 5.5. Mriksa lan Nginstal Google Antigravity CLI (agy / gemini cli)
 echo "Mriksa Google Antigravity CLI (agy)..."
