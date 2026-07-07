@@ -2,6 +2,20 @@
 
 Aplikasi **Mobile IDE** sing enteng lan modern kanggo ngoding liwat HP Android nggunakake teknologi **Antigravity AI**.
 
+## 📱 Tampilan Mobile (Screenshots)
+
+Berikut adalah galeri tampilan antarmuka Mobile IDE pada perangkat seluler (HP Android/iOS):
+
+| 🔑 Halaman Login | 💻 Code Editor | 💬 Chat Assistant (v1.1.7) |
+| :---: | :---: | :---: |
+| ![Login Page](screenshots/mobile_login.png) | ![Editor Tab](screenshots/mobile_editor.png) | ![Chat Assistant](screenshots/mobile_chat.png) |
+
+| 🐚 Terminal Console | 📁 Atur Workspace | 🔄 Versi & Update (v1.1.7) |
+| :---: | :---: | :---: |
+| ![Terminal Console](screenshots/mobile_terminal.png) | ![Workspace Manager](screenshots/mobile_workspace.png) | ![Update Modal](screenshots/mobile_update.png) |
+
+---
+
 ## Fitur Utama
 - **Touch-Friendly File Explorer**: Menu file lan folder sing gampang di-swipe lan di-klik ing layar HP.
 - **Mobile Code Editor**: Nggunakake CodeMirror kanthi tema Dracula lan dhukungan syntax highlighting (Go, Python, JS, HTML, CSS).
