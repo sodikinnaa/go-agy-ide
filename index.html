@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.8</span>
+                    <span class="text-[10px] text-slate-400">v1.1.9</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -831,13 +831,16 @@
             const body = document.createElement('div');
             body.className = `bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200 overflow-x-auto relative`;
             
+            const contentEl = document.createElement('div');
+            contentEl.className = "chat-message-content";
+
             if (isMarkdown && sender === 'bot') {
                 const cleanText = text.replace(/<!-- keep-alive -->/g, '');
                 const parsedText = formatToolSteps(cleanText);
-                body.innerHTML = marked.parse(parsedText);
+                contentEl.innerHTML = marked.parse(parsedText);
                 
                 // Add apply code buttons to code blocks
-                body.querySelectorAll('pre code').forEach(codeEl => {
+                contentEl.querySelectorAll('pre code').forEach(codeEl => {
                     const pre = codeEl.parentNode;
                     pre.className = "relative group/pre my-2 rounded-lg bg-brand-dark p-3 overflow-x-auto code-font text-xs";
                     
@@ -864,7 +867,7 @@
                     pre.appendChild(applyBtn);
                 });
             } else {
-                body.innerText = text;
+                contentEl.innerText = text;
             }
 
             // Append small timestamp
@@ -879,6 +882,8 @@
                 timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             }
             timeEl.innerText = timeStr;
+            
+            body.appendChild(contentEl);
             body.appendChild(timeEl);
 
             row.appendChild(avatar);
@@ -914,6 +919,7 @@
             const botBubble = appendChatMessage('bot', 'Connecting to Antigravity...');
 
             activeChatAbortController = new AbortController();
+            let thinkingInterval = null;
 
             try {
                 const model = document.getElementById('model-select').value;
@@ -934,8 +940,30 @@
                 if (!response.ok) throw new Error('API server returned error');
 
                 // Tampilkan spinner 'lagi mikir' nalika ngenteni chunk pertama
-                botBubble.innerHTML = '<span class="text-xs text-slate-400 flex items-center"><i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin mr-1.5 shrink-0 text-brand-accent"></i>Agen lagi mikir...</span>';
+                const contentEl = botBubble.querySelector('.chat-message-content');
+                if (contentEl) {
+                    contentEl.innerHTML = '<span class="text-xs text-slate-400 flex items-center"><i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin mr-1.5 shrink-0 text-brand-accent"></i><span id="thinking-status">Agen lagi mikir... (0s)</span></span>';
+                }
                 lucide.createIcons();
+
+                let thinkingSeconds = 0;
+                const statusPhrases = [
+                    "Agen lagi mikir...",
+                    "Nganalisis workspace...",
+                    "Ngrencanakake langkah...",
+                    "Maca struktur berkas...",
+                    "Nimbang solusi paling apik...",
+                    "Sabar ya lek, isih proses..."
+                ];
+                thinkingInterval = setInterval(() => {
+                    thinkingSeconds++;
+                    const phraseIndex = Math.floor(thinkingSeconds / 4) % statusPhrases.length;
+                    const phrase = statusPhrases[phraseIndex];
+                    const statusTextEl = document.getElementById('thinking-status');
+                    if (statusTextEl) {
+                        statusTextEl.innerText = `${phrase} (${thinkingSeconds}s)`;
+                    }
+                }, 1000);
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
@@ -952,14 +980,20 @@
                     let displayText = fullText.replace(/<!-- keep-alive -->/g, '');
                     
                     if (firstChunk && displayText.trim() !== "") {
-                        botBubble.innerHTML = "";
+                        if (thinkingInterval) {
+                            clearInterval(thinkingInterval);
+                            thinkingInterval = null;
+                        }
+                        const cEl = botBubble.querySelector('.chat-message-content');
+                        if (cEl) cEl.innerHTML = "";
                         firstChunk = false;
                     }
 
                     if (!firstChunk) {
                         let parsedText = formatToolSteps(displayText);
                         // Render markdown dynamically
-                        botBubble.innerHTML = marked.parse(parsedText);
+                        const cEl = botBubble.querySelector('.chat-message-content');
+                        if (cEl) cEl.innerHTML = marked.parse(parsedText);
                     }
 
                     // Add copy/apply buttons to dynamic pre/code blocks
@@ -1015,11 +1049,16 @@
 
             } catch (err) {
                 if (err.name === 'AbortError') {
-                    botBubble.innerHTML += `<div class="mt-2 text-xs text-yellow-500 font-semibold flex items-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i>Obrolan dimandhegake dening pangguna.</div>`;
+                    const cEl = botBubble.querySelector('.chat-message-content');
+                    if (cEl) cEl.innerHTML += `<div class="mt-2 text-xs text-yellow-500 font-semibold flex items-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i>Obrolan dimandhegake dening pangguna.</div>`;
                 } else {
-                    botBubble.innerText = `Error: ${err.message}`;
+                    const cEl = botBubble.querySelector('.chat-message-content');
+                    if (cEl) cEl.innerText = `Error: ${err.message}`;
                 }
             } finally {
+                if (thinkingInterval) {
+                    clearInterval(thinkingInterval);
+                }
                 sendBtn.classList.remove('hidden');
                 stopBtn.classList.add('hidden');
                 activeChatAbortController = null;
@@ -1487,7 +1526,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.8";
+                const current = "v1.1.9";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1503,7 +1542,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.8).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.9).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1600,7 +1639,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.8</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.9</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
