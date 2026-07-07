@@ -13,3 +13,5 @@ Thumbs.db
 # Private security credentials
 password.txt
 
+# debug internal
+debug/
