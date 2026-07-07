@@ -259,7 +259,7 @@ mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
     }
 }
 
-# 5.5. Mriksa lan Nginstal Google Antigravity CLI (agy / gemini cli)
+# 5.5. Mriksa, Nginstal, sarta Nganyari Google Antigravity CLI (agy / gemini cli)
 echo "Mriksa Google Antigravity CLI (agy)..."
 if ! command -v agy &> /dev/null && [ ! -f "$HOME/.local/bin/agy" ]; then
     echo "Google Antigravity CLI (agy) ora ditemokake. Mulai ngundhuh lan nginstal..."
@@ -269,7 +269,12 @@ if ! command -v agy &> /dev/null && [ ! -f "$HOME/.local/bin/agy" ]; then
         echo "  curl -fsSL https://antigravity.google/cli/install.sh | bash"
     fi
 else
-    echo "Google Antigravity CLI (agy) wis terinstal."
+    echo "Google Antigravity CLI (agy) wis terinstal. Nyoba nganyari menyang versi paling anyar..."
+    AGY_BIN="agy"
+    if [ -f "$HOME/.local/bin/agy" ]; then
+        AGY_BIN="$HOME/.local/bin/agy"
+    fi
+    $AGY_BIN update || echo "Pènget: Gagal nganyari Antigravity CLI."
 fi
 
 # Tambah ~/.local/bin menyang PATH yen durung ana ing session iki
