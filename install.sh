@@ -113,7 +113,11 @@ case "\$1" in
             echo "Mobile IDE is already running."
         else
             cd "\$INSTALL_DIR"
-            ./start.sh > server.log 2>&1 &
+            if command -v setsid &>/dev/null; then
+                setsid ./start.sh > server.log 2>&1 &
+            else
+                nohup ./start.sh > server.log 2>&1 &
+            fi
             sleep 2
             if pgrep -f "mobile-agy" > /dev/null; then
                 echo "Mobile IDE started successfully."
@@ -132,7 +136,11 @@ case "\$1" in
         pkill -f mobile-agy 2>/dev/null || true
         sleep 1
         cd "\$INSTALL_DIR"
-        ./start.sh > server.log 2>&1 &
+        if command -v setsid &>/dev/null; then
+            setsid ./start.sh > server.log 2>&1 &
+        else
+            nohup ./start.sh > server.log 2>&1 &
+        fi
         sleep 2
         echo "Mobile IDE restarted."
         ;;
@@ -339,7 +347,11 @@ generate_scripts
 
 # 8. Nglakokake server ing background
 echo "Nglakokake server Mobile IDE ing port: $PORT..."
-./start.sh > server.log 2>&1 &
+if command -v setsid &>/dev/null; then
+    setsid ./start.sh > server.log 2>&1 &
+else
+    nohup ./start.sh > server.log 2>&1 &
+fi
 
 # Ngenteni 2 detik kanggo mriksa apa server kasil munggah
 sleep 2
