@@ -449,3 +449,59 @@ func TestHandlePreviewFile(t *testing.T) {
 		t.Errorf("expected body %s, got %s", testContent, rr.Body.String())
 	}
 }
+
+func TestHandleSelfUpdate(t *testing.T) {
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	sessionToken := authSvc.InitSession()
+
+	// Mock HOME env to bypass Layer 2 Google Auth
+	originalHome := os.Getenv("HOME")
+	tempHome, err := os.MkdirTemp("", "test_home_*")
+	if err != nil {
+		t.Fatalf("failed to create temp home: %v", err)
+	}
+	defer os.RemoveAll(tempHome)
+
+	os.Setenv("HOME", tempHome)
+	defer os.Setenv("HOME", originalHome)
+
+	// Write dummy Google token to pass Layer 2 Google Auth check
+	historyDir := filepath.Join(tempHome, ".gemini", "antigravity-cli")
+	err = os.MkdirAll(historyDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create history dir: %v", err)
+	}
+	err = os.WriteFile(filepath.Join(historyDir, "antigravity-oauth-token"), []byte("dummy"), 0600)
+	if err != nil {
+		t.Fatalf("failed to write dummy token: %v", err)
+	}
+
+	// 1. Test GET not allowed
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/update", nil)
+	reqGet.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrGet := httptest.NewRecorder()
+
+	handlerFunc := h.AuthMiddleware(h.HandleSelfUpdate)
+	handlerFunc.ServeHTTP(rrGet, reqGet)
+
+	if rrGet.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rrGet.Code)
+	}
+
+	// 2. Test POST successful triggering
+	reqPost := httptest.NewRequest(http.MethodPost, "/api/update", nil)
+	reqPost.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrPost := httptest.NewRecorder()
+
+	handlerFunc.ServeHTTP(rrPost, reqPost)
+
+	if rrPost.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rrPost.Code)
+	}
+
+	if !strings.Contains(rrPost.Body.String(), "Pembaruan dimulai") {
+		t.Errorf("expected response to indicate update started, got: %s", rrPost.Body.String())
+	}
+}
