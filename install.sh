@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-VERSION="v1.2.1"
+VERSION="v1.2.2"
 
 # Tampilan header
 echo "================================================="
@@ -18,10 +18,10 @@ case "$OS" in
     linux)
         case "$ARCH" in
             x86_64|amd64)
-                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-linux-amd64"
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/${VERSION}/mobile-agy-linux-amd64"
                 ;;
             aarch64|arm64)
-                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-linux-arm64"
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/${VERSION}/mobile-agy-linux-arm64"
                 ;;
             *)
                 echo "Error: Arsitektur CPU $ARCH ora didhukung kanggo Linux."
@@ -32,10 +32,10 @@ case "$OS" in
     darwin)
         case "$ARCH" in
             x86_64|amd64)
-                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-darwin-amd64"
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/${VERSION}/mobile-agy-darwin-amd64"
                 ;;
             arm64)
-                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-darwin-arm64"
+                BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/${VERSION}/mobile-agy-darwin-arm64"
                 ;;
             *)
                 echo "Error: Arsitektur CPU $ARCH ora didhukung kanggo MacOS."
@@ -45,7 +45,7 @@ case "$OS" in
         ;;
     mingw*|msys*|cygwin*|windows*)
         # Windows environment nggunakake Bash (Git Bash / MSYS2)
-        BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/latest/mobile-agy-windows-amd64.exe"
+        BINARY_URL="https://github.com/sodikinnaa/go-agy-ide/releases/download/${VERSION}/mobile-agy-windows-amd64.exe"
         BINARY_NAME="mobile-agy.exe"
         ;;
     *)
