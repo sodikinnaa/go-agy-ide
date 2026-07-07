@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.3</span>
+                    <span class="text-[10px] text-slate-400">v1.1.4</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1363,16 +1363,12 @@
             const dot = document.getElementById('update-dot');
             const updateInst = document.getElementById('update-inst');
             
-            if (document.getElementById('webhook-url-display')) {
-                document.getElementById('webhook-url-display').innerText = window.location.origin + "/api/webhook";
-            }
-
             try {
                 const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases/latest');
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.3";
+                const current = "v1.1.4";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1388,7 +1384,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.3).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.4).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1468,7 +1464,7 @@
         </div>
     </div>
 
-    <!-- Update & Webhook Info Modal -->
+    <!-- Update Info Modal -->
     <div id="update-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
         <div class="w-full max-w-md bg-brand-panel border border-brand-border p-6 rounded-2xl shadow-2xl relative shadow-purple-900/10">
             <button onclick="closeUpdateModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
@@ -1476,16 +1472,16 @@
             </button>
             <h2 class="text-lg font-bold text-white mb-2 flex items-center space-x-2">
                 <i data-lucide="info" class="w-5 h-5 text-brand-accent animate-pulse"></i>
-                <span>Informasi Versi & Webhook</span>
+                <span>Informasi Versi & Update</span>
             </h2>
-            <p class="text-[11px] text-slate-400 mb-4">Mriksa versi aplikasi, rilis anyar saka GitHub, lan konfigurasi webhook otomatis.</p>
+            <p class="text-[11px] text-slate-400 mb-4">Mriksa versi aplikasi lan ngundhuh rilis anyar saka GitHub.</p>
             
             <div class="space-y-4 text-xs">
                 <!-- Version Status -->
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.3</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.4</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -1512,32 +1508,7 @@
                     </div>
                 </div>
 
-                <!-- Webhook Configuration -->
-                <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2">
-                    <div class="font-bold text-white flex items-center space-x-1">
-                        <i data-lucide="webhook" class="w-4 h-4 text-blue-400"></i>
-                        <span>Integrasi GitHub Webhook (Auto-Pull)</span>
-                    </div>
-                    <p class="text-slate-400 leading-relaxed">
-                        Supaya server otomatis narik kode anyar (`git pull`) saben kamu ngirim push menyang GitHub, atur **Webhook** ing repositori GitHub-mu:
-                    </p>
-                    <div class="space-y-1.5 font-mono text-[10px]">
-                        <div class="bg-black/60 p-2 rounded text-slate-300 break-all border border-brand-border">
-                            <span class="text-slate-500">Payload URL:</span><br>
-                            <span id="webhook-url-display">http://&lt;IP-Server-Mu&gt;:8080/api/webhook</span>
-                        </div>
-                        <div class="bg-black/60 p-2 rounded text-slate-300 border border-brand-border">
-                            <span class="text-slate-500">Content type:</span> <span class="text-white">application/json</span>
-                        </div>
-                        <div class="bg-black/60 p-2 rounded text-slate-300 border border-brand-border">
-                            <span class="text-slate-500">Events:</span> <span class="text-white">Just the push event</span>
-                        </div>
-                    </div>
-                    <p class="text-[10px] text-yellow-500/80 italic leading-relaxed">
-                        *Catetan: IP Server kudu bisa diakses publik (utawa nganggo alat port forwarding kaya Ngrok) supaya GitHub bisa ngirim webhook menyang kene.
-                    </p>
                 </div>
-            </div>
         </div>
     </div>
 </body>
