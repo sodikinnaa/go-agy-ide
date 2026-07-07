@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.5</span>
+                    <span class="text-[10px] text-slate-400">v1.1.6</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -728,28 +728,76 @@
             
             for (let i = 0; i < lines.length; i++) {
                 let line = lines[i];
+                let trimmed = line.trim();
                 
-                // Match a line starting with ● (bullet point)
-                if (line.trim().startsWith('●')) {
+                // Match "▸ Thought" lines
+                if (trimmed.startsWith('▸') || trimmed.includes('▸ Thought')) {
                     if (inDetails) {
                         output.push('</pre></details>');
                         inDetails = false;
                     }
                     
-                    // Clean up the "(ctrl+o to expand)" hint since click handles it in web UI
+                    // Look ahead to see if the next line is the thought title (indented)
+                    let thoughtTitle = "";
+                    if (i + 1 < lines.length && (lines[i+1].startsWith('  ') || lines[i+1].startsWith('\t'))) {
+                        thoughtTitle = lines[i+1].trim();
+                        i++; // skip next line
+                    }
+                    
+                    output.push(`<div class="flex items-center space-x-2 text-[11px] text-slate-400 font-mono my-2.5 bg-brand-dark/40 border border-brand-border p-2 rounded-xl select-none">
+    <i data-lucide="brain" class="w-3.5 h-3.5 text-brand-accent shrink-0 animate-pulse"></i>
+    <span>${trimmed} ${thoughtTitle ? `&mdash; <span class="text-slate-300 font-medium">${thoughtTitle}</span>` : ''}</span>
+</div>`);
+                    continue;
+                }
+                
+                // Match a line starting with ● (bullet point)
+                if (trimmed.startsWith('●')) {
+                    if (inDetails) {
+                        output.push('</pre></details>');
+                        inDetails = false;
+                    }
+                    
+                    // Clean up the "(ctrl+o to expand)" hint
                     let cleanLine = line.replace(/\(ctrl\+o to expand\)/g, '').trim();
                     
+                    // Format tool name based on keywords
+                    let toolName = "Tool Execution";
+                    let iconColor = "text-brand-accent";
+                    let iconName = "play";
+                    
+                    if (cleanLine.includes('Read') || cleanLine.includes('view_file')) {
+                        toolName = "Moco Berkas (Read)";
+                        iconColor = "text-blue-400";
+                        iconName = "file-text";
+                    } else if (cleanLine.includes('Edit') || cleanLine.includes('Write') || cleanLine.includes('replace_file_content') || cleanLine.includes('write_to_file')) {
+                        toolName = "Nulis/Edit Berkas (Write)";
+                        iconColor = "text-yellow-400";
+                        iconName = "edit-3";
+                    } else if (cleanLine.includes('Search') || cleanLine.includes('Grep') || cleanLine.includes('ListDir') || cleanLine.includes('list_dir') || cleanLine.includes('grep_search')) {
+                        toolName = "Mriksa Folder/Grep (Search)";
+                        iconColor = "text-purple-400";
+                        iconName = "search";
+                    } else if (cleanLine.includes('Bash') || cleanLine.includes('run_command')) {
+                        toolName = "Perintah Terminal (Bash)";
+                        iconColor = "text-green-400";
+                        iconName = "terminal";
+                    }
+                    
                     output.push(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
-<summary class="cursor-pointer font-mono font-semibold text-brand-accent hover:text-white transition flex items-center space-x-2 select-none">
-    <span class="w-2 h-2 rounded-full bg-brand-accent animate-pulse shrink-0"></span>
-    <span>${cleanLine}</span>
-    <span class="text-[10px] text-slate-500 font-normal italic ml-2">(klik kanggo ndelok detail)</span>
+<summary class="cursor-pointer font-mono font-semibold text-slate-200 hover:text-white transition flex items-center justify-between select-none">
+    <div class="flex items-center space-x-2">
+        <i data-lucide="${iconName}" class="w-4 h-4 ${iconColor} shrink-0"></i>
+        <span class="text-slate-400">[${toolName}]</span>
+        <span class="text-brand-accent">${cleanLine.replace('●', '').trim()}</span>
+    </div>
+    <span class="text-[10px] text-slate-500 font-normal italic">(klik kanggo ndelok detail)</span>
 </summary>
-<pre class="mt-2.5 p-3 bg-black/40 text-slate-300 rounded-lg border border-brand-border overflow-x-auto text-[11px] leading-relaxed code-font font-mono">`);
+<pre class="mt-2.5 p-3 bg-black/40 text-slate-300 rounded-lg border border-brand-border overflow-x-auto text-[11px] leading-relaxed code-font font-mono">`.replace('%s', toolName));
                     inDetails = true;
                 } else {
                     // Close details block if a new header or regular text starts
-                    if (inDetails && (line.startsWith('#') || line.startsWith('###') || /^[A-Za-z]/.test(line.trim()))) {
+                    if (inDetails && (line.startsWith('#') || line.startsWith('###') || /^[A-Za-z]/.test(trimmed))) {
                         output.push('</pre></details>');
                         inDetails = false;
                     }
@@ -1417,7 +1465,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.5";
+                const current = "v1.1.6";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1433,7 +1481,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.5).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.6).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1530,7 +1578,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.5</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.6</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

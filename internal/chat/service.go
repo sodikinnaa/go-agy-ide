@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -45,11 +46,20 @@ type ChatHistoryDetail struct {
 	Messages []ChatMessage `json:"messages"`
 }
 
+type ToolCall struct {
+	Name        string `json:"name"`
+	ToolAction  string `json:"tool_action"`
+	ToolSummary string `json:"tool_summary"`
+	Arguments   any    `json:"args"`
+}
+
 type TranscriptLine struct {
-	Source    string `json:"source"`
-	Type      string `json:"type"`
-	Content   string `json:"content"`
-	CreatedAt string `json:"created_at"`
+	Source    string     `json:"source"`
+	Type      string     `json:"type"`
+	Content   string     `json:"content"`
+	CreatedAt string     `json:"created_at"`
+	Thinking  string     `json:"thinking"`
+	ToolCalls []ToolCall `json:"tool_calls"`
 }
 
 type Service struct {
@@ -215,12 +225,75 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 				Content:   line.Content,
 				Timestamp: line.CreatedAt,
 			})
-		} else if line.Type == "PLANNER_RESPONSE" && line.Content != "" {
-			messages = append(messages, ChatMessage{
-				Role:      "model",
-				Content:   line.Content,
-				Timestamp: line.CreatedAt,
-			})
+		} else if line.Type == "PLANNER_RESPONSE" {
+			var sb strings.Builder
+			
+			if line.Thinking != "" {
+				sb.WriteString(`<details class="bg-brand-dark/40 border border-brand-border rounded-xl p-3 my-2 text-xs">
+<summary class="cursor-pointer font-mono font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2 select-none">
+    <i data-lucide="brain" class="w-3.5 h-3.5 text-brand-accent animate-pulse shrink-0"></i>
+    <span>Proses Mikir (Thought Process)</span>
+</summary>
+<div class="mt-2 text-slate-300 leading-relaxed font-sans whitespace-pre-line">`)
+				sb.WriteString(strings.TrimSpace(line.Thinking))
+				sb.WriteString(`</div>
+</details>
+`)
+			}
+			
+			for _, tc := range line.ToolCalls {
+				toolLabel := "Tool Execution"
+				iconColor := "text-brand-accent"
+				iconName := "play"
+				
+				if strings.Contains(tc.Name, "Read") || strings.Contains(tc.Name, "view_file") {
+					toolLabel = "Moco Berkas (Read)"
+					iconColor = "text-blue-400"
+					iconName = "file-text"
+				} else if strings.Contains(tc.Name, "Edit") || strings.Contains(tc.Name, "Write") || strings.Contains(tc.Name, "replace_file_content") || strings.Contains(tc.Name, "write_to_file") {
+					toolLabel = "Nulis/Edit Berkas (Write)"
+					iconColor = "text-yellow-400"
+					iconName = "edit-3"
+				} else if strings.Contains(tc.Name, "Search") || strings.Contains(tc.Name, "Grep") || strings.Contains(tc.Name, "ListDir") || strings.Contains(tc.Name, "list_dir") || strings.Contains(tc.Name, "grep_search") {
+					toolLabel = "Mriksa Folder/Grep (Search)"
+					iconColor = "text-purple-400"
+					iconName = "search"
+				} else if strings.Contains(tc.Name, "Bash") || strings.Contains(tc.Name, "run_command") {
+					toolLabel = "Perintah Terminal (Bash)"
+					iconColor = "text-green-400"
+					iconName = "terminal"
+				}
+				
+				argsBytes, _ := json.MarshalIndent(tc.Arguments, "", "  ")
+				
+				sb.WriteString(fmt.Sprintf(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
+<summary class="cursor-pointer font-mono font-semibold text-slate-200 hover:text-white transition flex items-center justify-between select-none">
+    <div class="flex items-center space-x-2">
+        <i data-lucide="%s" class="w-4 h-4 %s shrink-0"></i>
+        <span class="text-slate-400">[%s]</span>
+        <span class="text-brand-accent">%s</span>
+    </div>
+    <span class="text-[10px] text-slate-500 font-normal italic">(klik kanggo ndelok detail)</span>
+</summary>
+<pre class="mt-2.5 p-3 bg-black/40 text-slate-300 rounded-lg border border-brand-border overflow-x-auto text-[11px] leading-relaxed code-font font-mono">
+%s
+</pre>
+</details>
+`, iconName, iconColor, toolLabel, tc.Name, string(argsBytes)))
+			}
+			
+			if line.Content != "" {
+				sb.WriteString(line.Content)
+			}
+			
+			builtContent := sb.String()
+			if strings.TrimSpace(builtContent) != "" {
+				messages = append(messages, ChatMessage{
+					Role:      "model",
+					Content:   builtContent,
+					Timestamp: line.CreatedAt,
+				})
+			}
 		}
 	}
 
