@@ -238,26 +238,27 @@ if [[ "$BINARY_NAME" != *.exe ]]; then
     chmod +x "$TEMP_BINARY"
 fi
 
-# 4. Mandhegake proses lawas (Mung sawise download binary anyar rampung!)
-echo "Mriksa lan ngresiki proses lawas..."
+# 4. Ganteni binary lawas nganggo metode Hot-Swap (Nyegah 'text file busy' lan zero downtime)
+echo "Nindakake hot-swap binary..."
 if [[ "$BINARY_NAME" == *.exe ]]; then
+    # Ing Windows, mateni proses dhisik amarga file sistem ngunci file sing mlaku
     taskkill //F //IM mobile-agy.exe 2>/dev/null || true
+    mv -f "$TEMP_BINARY" "$BINARY_NAME" 2>/dev/null || true
 else
-    # Mandhegake proses mobile-agy sarta start.sh sing isih mlaku
+    # Ing Linux/Unix, ganti jeneng file sing lagi mlaku dhisik (diidini dening OS)
+    if [ -f "$BINARY_NAME" ]; then
+        mv -f "$BINARY_NAME" "${BINARY_NAME}.old" 2>/dev/null || true
+    fi
+    # Pindhah binary anyar menyang panggonan utama
+    mv -f "$TEMP_BINARY" "$BINARY_NAME"
+    
+    # Mandhegake proses lawas sing saiki mlaku minangka .old
     pkill -f mobile-agy 2>/dev/null || true
-    # Ngenteni sedhela supaya port dibebasake
-    sleep 0.5
+    sleep 0.2
+    
+    # Hapus file .old (bakal dibusak sakwise proses lawas mati)
+    rm -f "${BINARY_NAME}.old" 2>/dev/null || true
 fi
-
-# 5. Ganteni binary lawas
-mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
-    echo "Pènget: Gagal ngganti binary utama secara langsung. Nyoba ngganti jeneng file lawas..."
-    mv -f "$BINARY_NAME" "${BINARY_NAME}.old" 2>/dev/null || true
-    mv -f "$TEMP_BINARY" "$BINARY_NAME" || {
-        echo "ERROR: Gagal mindhah binary anyar menyang $BINARY_NAME."
-        exit 1
-    }
-}
 
 # 5.5. Mriksa, Nginstal, sarta Nganyari Google Antigravity CLI (agy / gemini cli)
 echo "Mriksa Google Antigravity CLI (agy)..."
