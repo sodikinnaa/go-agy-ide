@@ -6,11 +6,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"mobile-agy/internal/auth"
+	"mobile-agy/internal/chat"
+	"mobile-agy/internal/handler"
+	"mobile-agy/internal/terminal"
+	"mobile-agy/internal/workspace"
 )
 
 func main() {
-	var err error
-	serverStartDir, err = filepath.Abs(".")
+	serverStartDir, err := filepath.Abs(".")
 	if err != nil {
 		fmt.Printf("Gagal mendapatkan path direktori saat ini: %v\n", err)
 		os.Exit(1)
@@ -21,55 +26,55 @@ func main() {
 		port = "8080"
 	}
 
-	// Load workspaces
-	loadWorkspaces()
+	// Initialize modular services
+	workspaceSvc := workspace.NewService(serverStartDir)
+	authSvc := auth.NewService(serverStartDir)
+	chatSvc := chat.NewService()
+	terminalSvc := terminal.NewService()
 
-	// Load or generate password for access control
-	loadPassword()
+	// Initialize HTML pages embedding
+	htmlPages := handler.EmbeddedHTML{
+		IndexHTML:    embeddedIndexHTML,
+		LoginHTML:    embeddedLoginHTML,
+		LoginPwdHTML: embeddedLoginPwdHTML,
+	}
 
-	// Routes wrapped with authMiddleware
-	http.HandleFunc("/", authMiddleware(handleIndex))
-	http.HandleFunc("/login", authMiddleware(handleLoginPage))
-	http.HandleFunc("/login-pwd", authMiddleware(handleLoginPwdPage))
-	
+	// Initialize HTTP handler
+	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, htmlPages)
+
+	// Routes wrapped with AuthMiddleware
+	http.HandleFunc("/", h.AuthMiddleware(h.HandleIndex))
+	http.HandleFunc("/login", h.AuthMiddleware(h.HandleLoginPage))
+	http.HandleFunc("/login-pwd", h.AuthMiddleware(h.HandleLoginPwdPage))
+
 	// Authentication APIs
-	http.HandleFunc("/api/auth/start", authMiddleware(handleAuthStart))
-	http.HandleFunc("/api/auth/submit", authMiddleware(handleAuthSubmit))
-	http.HandleFunc("/api/auth/logout", authMiddleware(handleLogout))
-	http.HandleFunc("/api/auth/status", authMiddleware(handleAuthStatus))
-	http.HandleFunc("/api/auth/pwd", authMiddleware(handlePasswordAuth))
-	
+	http.HandleFunc("/api/auth/start", h.AuthMiddleware(h.HandleAuthStart))
+	http.HandleFunc("/api/auth/submit", h.AuthMiddleware(h.HandleAuthSubmit))
+	http.HandleFunc("/api/auth/logout", h.AuthMiddleware(h.HandleLogout))
+	http.HandleFunc("/api/auth/status", h.AuthMiddleware(h.HandleAuthStatus))
+	http.HandleFunc("/api/auth/pwd", h.AuthMiddleware(h.HandlePasswordAuth))
+
 	// Workspace and project files APIs
-	http.HandleFunc("/api/files", authMiddleware(handleListFiles))
-	http.HandleFunc("/api/file", authMiddleware(handleFileOperations))
-	http.HandleFunc("/api/file/create", authMiddleware(handleCreateFileOrFolder))
-	http.HandleFunc("/api/chat", authMiddleware(handleChatStream))
-	http.HandleFunc("/api/chat/history", authMiddleware(handleChatHistoryList))
-	http.HandleFunc("/api/chat/history/detail", authMiddleware(handleChatHistoryDetail))
-	http.HandleFunc("/api/chat/stop", authMiddleware(handleChatStop))
-	http.HandleFunc("/api/chat/delete", authMiddleware(handleChatDelete))
-	http.HandleFunc("/api/run", authMiddleware(handleRunCommandStream))
-	http.HandleFunc("/api/workspaces", authMiddleware(handleWorkspacesGet))
-	http.HandleFunc("/api/workspaces/select", authMiddleware(handleWorkspaceSelect))
-	http.HandleFunc("/api/workspaces/add", authMiddleware(handleWorkspaceAdd))
-	http.HandleFunc("/api/models", authMiddleware(handleModelsList))
-	http.HandleFunc("/preview/", authMiddleware(handlePreviewFile))
-	http.HandleFunc("/api/webhook", handleGithubWebhook)
+	http.HandleFunc("/api/files", h.AuthMiddleware(h.HandleListFiles))
+	http.HandleFunc("/api/file", h.AuthMiddleware(h.HandleFileOperations))
+	http.HandleFunc("/api/file/create", h.AuthMiddleware(h.HandleCreateFileOrFolder))
+	http.HandleFunc("/api/chat", h.AuthMiddleware(h.HandleChatStream))
+	http.HandleFunc("/api/chat/history", h.AuthMiddleware(h.HandleChatHistoryList))
+	http.HandleFunc("/api/chat/history/detail", h.AuthMiddleware(h.HandleChatHistoryDetail))
+	http.HandleFunc("/api/chat/stop", h.AuthMiddleware(h.HandleChatStop))
+	http.HandleFunc("/api/chat/delete", h.AuthMiddleware(h.HandleChatDelete))
+	http.HandleFunc("/api/run", h.AuthMiddleware(h.HandleRunCommandStream))
+	http.HandleFunc("/api/workspaces", h.AuthMiddleware(h.HandleWorkspacesGet))
+	http.HandleFunc("/api/workspaces/select", h.AuthMiddleware(h.HandleWorkspaceSelect))
+	http.HandleFunc("/api/workspaces/add", h.AuthMiddleware(h.HandleWorkspaceAdd))
+	http.HandleFunc("/api/models", h.AuthMiddleware(h.HandleModelsList))
+	http.HandleFunc("/preview/", h.AuthMiddleware(h.HandlePreviewFile))
+	http.HandleFunc("/api/webhook", h.HandleGithubWebhook)
+	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
 
 	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
-	log.Printf("Workspace root aktif: %s\n", activeWorkspaceDir)
+	log.Printf("Workspace root aktif: %s\n", workspaceSvc.ActiveWorkspaceDir())
 	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		log.Printf("Gagal nglakokake server: %v\n", err)
 	}
-}
-
-// Handler static html utama
-func handleIndex(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	content, err := os.ReadFile(filepath.Join(serverStartDir, "index.html"))
-	if err == nil {
-		w.Write(content)
-		return
-	}
-	w.Write([]byte(embeddedIndexHTML))
 }

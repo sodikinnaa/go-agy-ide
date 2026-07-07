@@ -8,16 +8,44 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"mobile-agy/internal/auth"
+	"mobile-agy/internal/chat"
+	"mobile-agy/internal/handler"
+	"mobile-agy/internal/terminal"
+	"mobile-agy/internal/workspace"
 )
 
-func init() {
-	bypassDynamicAuthCheck = true
+// Helper function to setup services & handler for testing
+func setupTestFixture(t *testing.T) (*workspace.Service, *auth.Service, *chat.Service, *terminal.Service, *handler.Handler, string) {
+	tempWS, err := os.MkdirTemp("", "test_ws_*")
+	if err != nil {
+		t.Fatalf("failed to create temp workspace: %v", err)
+	}
+
+	workspaceSvc := workspace.NewService(tempWS)
+	authSvc := auth.NewService(tempWS)
+	authSvc.SetBypassDynamicAuthCheck(true)
+
+	chatSvc := chat.NewService()
+	terminalSvc := terminal.NewService()
+
+	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, handler.EmbeddedHTML{
+		IndexHTML:    "<html>index</html>",
+		LoginHTML:    "<html>login</html>",
+		LoginPwdHTML: "<html>login pwd</html>",
+	})
+
+	return workspaceSvc, authSvc, chatSvc, terminalSvc, h, tempWS
 }
 
 func TestGenerateRandomPassword(t *testing.T) {
+	_, authSvc, _, _, _, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
 	lengths := []int{8, 16, 32}
 	for _, l := range lengths {
-		pass := generateRandomPassword(l)
+		pass := authSvc.GenerateRandomPassword(l)
 		if len(pass) != l {
 			t.Errorf("expected length %d, got %d", l, len(pass))
 		}
@@ -25,6 +53,9 @@ func TestGenerateRandomPassword(t *testing.T) {
 }
 
 func TestCheckOAuthTokenExists(t *testing.T) {
+	_, authSvc, _, _, _, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("failed to get home dir: %v", err)
@@ -34,7 +65,7 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 	tokenPath := filepath.Join(tokenDir, "antigravity-oauth-token")
 
 	// Save original token status
-	originalExists := checkOAuthTokenExists()
+	originalExists := authSvc.CheckOAuthTokenExists()
 
 	// Backup original token if it exists
 	backupPath := tokenPath + ".test_bak"
@@ -49,8 +80,8 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 	}
 
 	// 1. Check when token is missing
-	if checkOAuthTokenExists() {
-		t.Errorf("expected checkOAuthTokenExists to be false, got true")
+	if authSvc.CheckOAuthTokenExists() {
+		t.Errorf("expected CheckOAuthTokenExists to be false, got true")
 	}
 
 	// Create dummy token
@@ -65,24 +96,28 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 	defer os.Remove(tokenPath)
 
 	// 2. Check when token is present
-	if !checkOAuthTokenExists() {
-		t.Errorf("expected checkOAuthTokenExists to be true, got false")
+	if !authSvc.CheckOAuthTokenExists() {
+		t.Errorf("expected CheckOAuthTokenExists to be true, got false")
 	}
 }
 
 func TestHandleAuthStatus(t *testing.T) {
-	// Bypass password check for this test
-	originalPwd := secretPassword
-	secretPassword = ""
-	defer func() { secretPassword = originalPwd }()
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	// Bypass password check for this test by ensuring no password is set
+	os.Setenv("PASSWORD", "")
+	authSvc.LoadPassword()
+	sessionToken := authSvc.InitSession()
 
 	// Set up request and recorder
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
 	rr := httptest.NewRecorder()
 
 	// Run handler through middleware
-	handler := authMiddleware(handleAuthStatus)
-	handler.ServeHTTP(rr, req)
+	handlerFunc := h.AuthMiddleware(h.HandleAuthStatus)
+	handlerFunc.ServeHTTP(rr, req)
 
 	// Verify response status
 	if rr.Code != http.StatusOK {
@@ -102,20 +137,19 @@ func TestHandleAuthStatus(t *testing.T) {
 }
 
 func TestHandleListFilesUnauthorized(t *testing.T) {
-	// Bypass password check for this test
-	originalPwd := secretPassword
-	secretPassword = ""
-	defer func() { secretPassword = originalPwd }()
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
 
-	// Verify that listing files returns 401 when the server is not authenticated.
+	sessionToken := authSvc.InitSession()
+
 	// Temporarily simulate missing token
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatalf("failed to get home dir: %v", err)
 	}
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-	
-	originalExists := checkOAuthTokenExists()
+
+	originalExists := authSvc.CheckOAuthTokenExists()
 	backupPath := tokenPath + ".test_bak"
 	if originalExists {
 		err := os.Rename(tokenPath, backupPath)
@@ -127,13 +161,14 @@ func TestHandleListFilesUnauthorized(t *testing.T) {
 		}()
 	}
 
-	// Set up request and recorder
+	// Set up request with password session token but NO Google token
 	req := httptest.NewRequest(http.MethodGet, "/api/files", nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
 	rr := httptest.NewRecorder()
 
 	// Run handler through middleware
-	handler := authMiddleware(handleListFiles)
-	handler.ServeHTTP(rr, req)
+	handlerFunc := h.AuthMiddleware(h.HandleListFiles)
+	handlerFunc.ServeHTTP(rr, req)
 
 	// Verify response status is 401
 	if rr.Code != http.StatusUnauthorized {
@@ -142,17 +177,22 @@ func TestHandleListFilesUnauthorized(t *testing.T) {
 }
 
 func TestHandlePasswordAuth(t *testing.T) {
-	// Set mock password
-	originalPwd := secretPassword
-	secretPassword = "supersecretpassword123"
-	defer func() { secretPassword = originalPwd }()
+	// Set mock password in env
+	os.Setenv("PASSWORD", "supersecretpassword123")
+	defer os.Unsetenv("PASSWORD")
+
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	// Reload password in authSvc
+	authSvc.LoadPassword()
 
 	// 1. Test Incorrect Password
 	reqIncorrect := httptest.NewRequest(http.MethodPost, "/api/auth/pwd", strings.NewReader("password=wrongpassword"))
 	reqIncorrect.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rrIncorrect := httptest.NewRecorder()
 
-	handlePasswordAuth(rrIncorrect, reqIncorrect)
+	h.HandlePasswordAuth(rrIncorrect, reqIncorrect)
 
 	if rrIncorrect.Code != http.StatusUnauthorized {
 		t.Errorf("expected status 401 for wrong password, got %d", rrIncorrect.Code)
@@ -163,7 +203,7 @@ func TestHandlePasswordAuth(t *testing.T) {
 	reqCorrect.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rrCorrect := httptest.NewRecorder()
 
-	handlePasswordAuth(rrCorrect, reqCorrect)
+	h.HandlePasswordAuth(rrCorrect, reqCorrect)
 
 	if rrCorrect.Code != http.StatusOK {
 		t.Errorf("expected status 200 for correct password, got %d", rrCorrect.Code)
@@ -183,21 +223,33 @@ func TestHandlePasswordAuth(t *testing.T) {
 		t.Fatalf("expected session_password cookie to be set")
 	}
 
-	if sessionCookie.Value != passwordSessionToken {
+	if sessionCookie.Value != authSvc.SessionToken() {
 		t.Errorf("expected cookie value to match session token, got %s", sessionCookie.Value)
 	}
 }
 
 func TestHandleChatHistoryList(t *testing.T) {
-	// Bypass password check
-	originalPwd := secretPassword
-	secretPassword = ""
-	defer func() { secretPassword = originalPwd }()
+	workspaceSvc, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	sessionToken := authSvc.InitSession()
 
 	// Set active workspace to match mock history workspace
-	originalWorkspace := activeWorkspaceDir
-	activeWorkspaceDir = "/workspace"
-	defer func() { activeWorkspaceDir = originalWorkspace }()
+	originalWorkspace := workspaceSvc.ActiveWorkspaceDir()
+	
+	// Create mock workspace directory
+	mockWSDir := filepath.Join(tempDir, "workspace")
+	err := os.MkdirAll(mockWSDir, 0755)
+	if err != nil {
+		t.Fatalf("failed to create mock workspace: %v", err)
+	}
+	err = workspaceSvc.Select(mockWSDir)
+	if err != nil {
+		t.Fatalf("failed to select mock workspace: %v", err)
+	}
+	defer func() { _ = workspaceSvc.Select(originalWorkspace) }()
+
+	activeWS := workspaceSvc.ActiveWorkspaceDir()
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
@@ -223,9 +275,9 @@ func TestHandleChatHistoryList(t *testing.T) {
 		t.Fatalf("failed to write dummy token: %v", err)
 	}
 
-	mockData := `{"display":"Test Prompt 1","timestamp":1000,"workspace":"/workspace","conversationId":"conv-1"}
-{"display":"Test Prompt 2","timestamp":2000,"workspace":"/workspace","conversationId":"conv-2"}
-{"display":"Test Prompt 3","timestamp":3000,"workspace":"/workspace","conversationId":"conv-1"}
+	mockData := `{"display":"Test Prompt 1","timestamp":1000,"workspace":"` + activeWS + `","conversationId":"conv-1"}
+{"display":"Test Prompt 2","timestamp":2000,"workspace":"` + activeWS + `","conversationId":"conv-2"}
+{"display":"Test Prompt 3","timestamp":3000,"workspace":"` + activeWS + `","conversationId":"conv-1"}
 `
 	err = os.WriteFile(filepath.Join(historyDir, "history.jsonl"), []byte(mockData), 0644)
 	if err != nil {
@@ -234,16 +286,17 @@ func TestHandleChatHistoryList(t *testing.T) {
 
 	// Request
 	req := httptest.NewRequest(http.MethodGet, "/api/chat/history", nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
 	rr := httptest.NewRecorder()
 
-	handler := authMiddleware(handleChatHistoryList)
-	handler.ServeHTTP(rr, req)
+	handlerFunc := h.AuthMiddleware(h.HandleChatHistoryList)
+	handlerFunc.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", rr.Code)
+		t.Errorf("expected status 200, got %d, body: %s", rr.Code, rr.Body.String())
 	}
 
-	var list []ChatHistoryItem
+	var list []chat.ChatHistoryItem
 	err = json.NewDecoder(rr.Body).Decode(&list)
 	if err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -266,10 +319,10 @@ func TestHandleChatHistoryList(t *testing.T) {
 }
 
 func TestHandleChatHistoryDetail(t *testing.T) {
-	// Bypass password check
-	originalPwd := secretPassword
-	secretPassword = ""
-	defer func() { secretPassword = originalPwd }()
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	sessionToken := authSvc.InitSession()
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
@@ -311,16 +364,17 @@ func TestHandleChatHistoryDetail(t *testing.T) {
 
 	// Request
 	req := httptest.NewRequest(http.MethodGet, "/api/chat/history/detail?id="+convID, nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
 	rr := httptest.NewRecorder()
 
-	handler := authMiddleware(handleChatHistoryDetail)
-	handler.ServeHTTP(rr, req)
+	handlerFunc := h.AuthMiddleware(h.HandleChatHistoryDetail)
+	handlerFunc.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)
 	}
 
-	var detail ChatHistoryDetail
+	var detail chat.ChatHistoryDetail
 	err = json.NewDecoder(rr.Body).Decode(&detail)
 	if err != nil {
 		t.Fatalf("failed to decode response: %v", err)
@@ -344,10 +398,10 @@ func TestHandleChatHistoryDetail(t *testing.T) {
 }
 
 func TestHandlePreviewFile(t *testing.T) {
-	// Bypass password check
-	originalPwd := secretPassword
-	secretPassword = ""
-	defer func() { secretPassword = originalPwd }()
+	workspaceSvc, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	sessionToken := authSvc.InitSession()
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
@@ -371,31 +425,21 @@ func TestHandlePreviewFile(t *testing.T) {
 		t.Fatalf("failed to write dummy token: %v", err)
 	}
 
-	// Setup mock activeWorkspaceDir
-	tempWS, err := os.MkdirTemp("", "test_ws_*")
-	if err != nil {
-		t.Fatalf("failed to create temp workspace: %v", err)
-	}
-	defer os.RemoveAll(tempWS)
-
-	originalWorkspace := activeWorkspaceDir
-	activeWorkspaceDir = tempWS
-	defer func() { activeWorkspaceDir = originalWorkspace }()
-
 	// Write a mock test file in workspace
 	testFile := "preview.html"
 	testContent := "<html>Hello Preview</html>"
-	err = os.WriteFile(filepath.Join(tempWS, testFile), []byte(testContent), 0644)
+	err = workspaceSvc.WriteFile(testFile, []byte(testContent))
 	if err != nil {
 		t.Fatalf("failed to write mock file: %v", err)
 	}
 
 	// Request for /preview/preview.html
 	req := httptest.NewRequest(http.MethodGet, "/preview/preview.html", nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
 	rr := httptest.NewRecorder()
 
-	handler := authMiddleware(handlePreviewFile)
-	handler.ServeHTTP(rr, req)
+	handlerFunc := h.AuthMiddleware(h.HandlePreviewFile)
+	handlerFunc.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Errorf("expected status 200, got %d", rr.Code)

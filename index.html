@@ -1398,6 +1398,44 @@
             
             lucide.createIcons();
         }
+
+        async function triggerSelfUpdate() {
+            const btn = document.getElementById('btn-run-update');
+            const progress = document.getElementById('update-progress-msg');
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                btn.innerText = "Mengupdate...";
+            }
+            if (progress) {
+                progress.classList.remove('hidden');
+            }
+
+            try {
+                const res = await fetch('/api/update', {
+                    method: 'POST'
+                });
+                if (res.ok) {
+                    logToTerminal('[SYSTEM] Update command triggered successfully. Reconnecting in 8 seconds...');
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 8000);
+                } else {
+                    throw new Error('Gagal ngirim perintah update');
+                }
+            } catch (err) {
+                alert("Error nalika update: " + err.message);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btn.innerText = "Update Saiki";
+                }
+                if (progress) {
+                    progress.classList.add('hidden');
+                }
+            }
+        }
     </script>
 
     <!-- Workspace Modal -->
@@ -1459,15 +1497,18 @@
                 </div>
 
                 <!-- Update Instructions -->
-                <div id="update-inst" class="hidden bg-purple-950/20 border border-brand-accent/30 p-3 rounded-xl">
+                <div id="update-inst" class="hidden bg-purple-950/20 border border-brand-accent/30 p-3 rounded-xl space-y-2">
                     <div class="font-bold text-white mb-1 flex items-center space-x-1">
                         <i data-lucide="arrow-up-circle" class="w-4 h-4 text-brand-accent animate-bounce"></i>
-                        <span>Cara Update Mobile IDE</span>
+                        <span>Pembaruan Kasedhiya!</span>
                     </div>
-                    <p class="text-slate-300 mb-2 leading-relaxed">Jalankan perintah berikut di Terminal Console aplikasi (kanan bawah) untuk memperbarui:</p>
-                    <div class="bg-black/60 p-2 rounded font-mono text-[10px] text-brand-accent flex justify-between items-center border border-brand-border">
-                        <span>agy-mobile update</span>
-                        <button onclick="navigator.clipboard.writeText('agy-mobile update'); alert('Perintah disalin!')" class="hover:text-white p-1 rounded hover:bg-brand-panel transition"><i data-lucide="copy" class="w-3.5 h-3.5"></i></button>
+                    <p class="text-slate-300 leading-relaxed text-[11px]">Njenengan bisa langsung nganyari server menyang versi anyar kanthi sekali klik:</p>
+                    <button id="btn-run-update" onclick="triggerSelfUpdate()" class="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-green-900/20">
+                        <i data-lucide="download-cloud" class="w-4 h-4"></i>
+                        <span>Update Saiki</span>
+                    </button>
+                    <div id="update-progress-msg" class="hidden text-[10px] text-yellow-400 italic text-center">
+                        Mulai nganyari server, server bakal mati sedhela banjur restart otomatis...
                     </div>
                 </div>
 
