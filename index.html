@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.4</span>
+                    <span class="text-[10px] text-slate-400">v1.1.5</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -720,6 +720,50 @@
             }
         }
 
+        function formatToolSteps(text) {
+            if (!text) return '';
+            const lines = text.split('\n');
+            let output = [];
+            let inDetails = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i];
+                
+                // Match a line starting with ● (bullet point)
+                if (line.trim().startsWith('●')) {
+                    if (inDetails) {
+                        output.push('</pre></details>');
+                        inDetails = false;
+                    }
+                    
+                    // Clean up the "(ctrl+o to expand)" hint since click handles it in web UI
+                    let cleanLine = line.replace(/\(ctrl\+o to expand\)/g, '').trim();
+                    
+                    output.push(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
+<summary class="cursor-pointer font-mono font-semibold text-brand-accent hover:text-white transition flex items-center space-x-2 select-none">
+    <span class="w-2 h-2 rounded-full bg-brand-accent animate-pulse shrink-0"></span>
+    <span>${cleanLine}</span>
+    <span class="text-[10px] text-slate-500 font-normal italic ml-2">(klik kanggo ndelok detail)</span>
+</summary>
+<pre class="mt-2.5 p-3 bg-black/40 text-slate-300 rounded-lg border border-brand-border overflow-x-auto text-[11px] leading-relaxed code-font font-mono">`);
+                    inDetails = true;
+                } else {
+                    // Close details block if a new header or regular text starts
+                    if (inDetails && (line.startsWith('#') || line.startsWith('###') || /^[A-Za-z]/.test(line.trim()))) {
+                        output.push('</pre></details>');
+                        inDetails = false;
+                    }
+                    output.push(line);
+                }
+            }
+            
+            if (inDetails) {
+                output.push('</pre></details>');
+            }
+            
+            return output.join('\n');
+        }
+
         // Chat helper
         function appendChatMessage(sender, text, isMarkdown = true) {
             const container = document.getElementById('chat-messages');
@@ -739,7 +783,9 @@
             body.className = `bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200 overflow-x-auto`;
             
             if (isMarkdown && sender === 'bot') {
-                body.innerHTML = marked.parse(text);
+                const cleanText = text.replace(/<!-- keep-alive -->/g, '');
+                const parsedText = formatToolSteps(cleanText);
+                body.innerHTML = marked.parse(parsedText);
                 
                 // Add apply code buttons to code blocks
                 body.querySelectorAll('pre code').forEach(codeEl => {
@@ -840,14 +886,17 @@
                     const chunk = decoder.decode(value, { stream: true });
                     fullText += chunk;
                     
-                    if (firstChunk && fullText.trim() !== "") {
+                    let displayText = fullText.replace(/<!-- keep-alive -->/g, '');
+                    
+                    if (firstChunk && displayText.trim() !== "") {
                         botBubble.innerHTML = "";
                         firstChunk = false;
                     }
 
                     if (!firstChunk) {
+                        let parsedText = formatToolSteps(displayText);
                         // Render markdown dynamically
-                        botBubble.innerHTML = marked.parse(fullText);
+                        botBubble.innerHTML = marked.parse(parsedText);
                     }
 
                     // Add copy/apply buttons to dynamic pre/code blocks
@@ -1368,7 +1417,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.4";
+                const current = "v1.1.5";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1384,7 +1433,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.4).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.5).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1481,7 +1530,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.4</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.5</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
