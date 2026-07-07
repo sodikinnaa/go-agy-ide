@@ -255,9 +255,9 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 
 				s.mu.Lock()
 				if s.activeAuthURL == "" {
-					if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/auth"); idx != -1 {
+					if idx := strings.Index(output, "https://accounts.google.com/o/oauth2/"); idx != -1 {
 						urlPart := output[idx:]
-						if endIdx := strings.IndexAny(urlPart, " \r\n\t"); endIdx != -1 {
+						if endIdx := strings.IndexAny(urlPart, " \r\n\t\""); endIdx != -1 {
 							s.activeAuthURL = urlPart[:endIdx]
 							log.Printf("[AUTH FOUND URL]: %s", s.activeAuthURL)
 						}
