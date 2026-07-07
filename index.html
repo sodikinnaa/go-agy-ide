@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.1.7</span>
+                    <span class="text-[10px] text-slate-400">v1.1.8</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -217,6 +217,7 @@
                     </div>
                     <div class="bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200">
                         Halo! Aku Antigravity Assistant. Ono sing iso tak bantu ngoding dina iki? Njaluk tulung opo wae, tak tulisi kodenya.
+                        <div id="initial-greeting-time" class="text-[9px] text-slate-500 text-right mt-1.5 font-mono select-none">--:--</div>
                     </div>
                 </div>
             </div>
@@ -813,7 +814,7 @@
         }
 
         // Chat helper
-        function appendChatMessage(sender, text, isMarkdown = true) {
+        function appendChatMessage(sender, text, isMarkdown = true, timestamp = null) {
             const container = document.getElementById('chat-messages');
             const row = document.createElement('div');
             row.className = "flex items-start space-x-3";
@@ -828,7 +829,7 @@
             }
 
             const body = document.createElement('div');
-            body.className = `bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200 overflow-x-auto`;
+            body.className = `bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200 overflow-x-auto relative`;
             
             if (isMarkdown && sender === 'bot') {
                 const cleanText = text.replace(/<!-- keep-alive -->/g, '');
@@ -865,6 +866,20 @@
             } else {
                 body.innerText = text;
             }
+
+            // Append small timestamp
+            const timeEl = document.createElement('div');
+            timeEl.className = "text-[9px] text-slate-500 text-right mt-1.5 font-mono select-none";
+            let timeStr = "";
+            if (timestamp) {
+                const tDate = new Date(timestamp);
+                timeStr = tDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else {
+                const now = new Date();
+                timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+            timeEl.innerText = timeStr;
+            body.appendChild(timeEl);
 
             row.appendChild(avatar);
             row.appendChild(body);
@@ -1264,6 +1279,12 @@
 
         // Fetch workspaces on load to initialize label
         window.addEventListener('DOMContentLoaded', () => {
+            // Set initial greeting time
+            const initialTimeEl = document.getElementById('initial-greeting-time');
+            if (initialTimeEl) {
+                initialTimeEl.innerText = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
+
             setTimeout(() => {
                 fetch('/api/workspaces')
                     .then(res => res.json())
@@ -1294,6 +1315,7 @@
                     </div>
                     <div class="bg-brand-panel border border-brand-border p-3 rounded-lg max-w-[85%] text-sm text-slate-200">
                         Halo! Sesi chat anyar diwiwiti. Ono sing iso tak bantu ngoding dina iki? Njaluk tulung opo wae, tak tulisi kodenya.
+                        <div class="text-[9px] text-slate-500 text-right mt-1.5 font-mono select-none">${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                     </div>
                 </div>
             `;
@@ -1426,7 +1448,7 @@
                 }
 
                 detail.messages.forEach(msg => {
-                    appendChatMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.role === 'model');
+                    appendChatMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.role === 'model', msg.timestamp);
                 });
                 
                 logToTerminal(`[SYSTEM] Sesi obrolan resumed: ${id}`);
@@ -1465,7 +1487,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.1.7";
+                const current = "v1.1.8";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1481,7 +1503,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.7).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.1.8).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1578,7 +1600,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.7</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.1.8</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
