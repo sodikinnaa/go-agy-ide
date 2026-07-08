@@ -53,6 +53,9 @@ func main() {
 	http.HandleFunc("/api/auth/logout", h.AuthMiddleware(h.HandleLogout))
 	http.HandleFunc("/api/auth/status", h.AuthMiddleware(h.HandleAuthStatus))
 	http.HandleFunc("/api/auth/pwd", h.AuthMiddleware(h.HandlePasswordAuth))
+	http.HandleFunc("/api/auth/pool", h.AuthMiddleware(h.HandleGetAccountsPool))
+	http.HandleFunc("/api/auth/pool/switch", h.AuthMiddleware(h.HandleSwitchAccount))
+	http.HandleFunc("/api/auth/pool/delete", h.AuthMiddleware(h.HandleDeleteAccount))
 	http.HandleFunc("/api/quota", h.AuthMiddleware(h.HandleQuotaSummary))
 
 	// Workspace and project files APIs

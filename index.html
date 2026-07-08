@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.2.8</span>
+                    <span class="text-[10px] text-slate-400">v1.2.9</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1604,15 +1604,19 @@
             const emailSpan = document.getElementById('quota-email');
             const projectSpan = document.getElementById('quota-project');
             const detailsDiv = document.getElementById('quota-details');
+            const poolContainer = document.getElementById('account-pool-container');
+            const poolList = document.getElementById('account-pool-list');
             
             if (emailSpan) emailSpan.innerText = 'Checking...';
             if (projectSpan) projectSpan.innerText = 'Checking...';
             if (detailsDiv) detailsDiv.innerHTML = '<div class="text-slate-400 py-4 text-center animate-pulse">Loading quota info...</div>';
+            if (poolContainer) poolContainer.classList.add('hidden');
             
             try {
-                const [statusRes, quotaRes] = await Promise.all([
+                const [statusRes, quotaRes, poolRes] = await Promise.all([
                     fetch('/api/auth/status'),
-                    fetch('/api/quota')
+                    fetch('/api/quota'),
+                    fetch('/api/auth/pool')
                 ]);
                 
                 if (statusRes.ok) {
@@ -1668,11 +1672,97 @@
                 } else {
                     if (detailsDiv) detailsDiv.innerHTML = '<div class="text-red-400 py-2 text-center text-[11px]">Gagal ngambil detail quota.</div>';
                 }
+
+                // Render account pool
+                if (poolRes.ok && poolList && poolContainer) {
+                    const poolData = await poolRes.json();
+                    const accounts = poolData.accounts || [];
+                    const active = poolData.active || '';
+                    
+                    if (accounts.length > 0) {
+                        poolContainer.classList.remove('hidden');
+                        let html = '';
+                        accounts.forEach(acc => {
+                            const isActive = acc === active;
+                            html += `
+                                <div class="flex items-center justify-between p-2 rounded-lg ${isActive ? 'bg-brand-600/20 border border-brand-accent/30' : 'bg-brand-dark/20 border border-brand-border/40'} text-[11px]">
+                                    <div class="flex items-center space-x-1.5 truncate max-w-[200px]">
+                                        <div class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-500'}"></div>
+                                        <span class="font-mono text-slate-200 truncate ${isActive ? 'font-bold' : ''}" title="${escapeHtml(acc)}">${escapeHtml(acc)}</span>
+                                    </div>
+                                    <div class="flex items-center space-x-1">
+                                        ${!isActive ? `
+                                            <button onclick="switchAccount('${escapeHtml(acc)}')" class="py-0.5 px-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded text-[9px] font-semibold transition">
+                                                Switch
+                                            </button>
+                                        ` : `
+                                            <span class="text-[9px] text-green-400 font-bold px-2">Aktif</span>
+                                        `}
+                                        <button onclick="deleteAccount('${escapeHtml(acc)}')" class="p-1 hover:text-red-400 text-slate-400 transition" title="Hapus Akun">
+                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        poolList.innerHTML = html;
+                    } else {
+                        poolContainer.classList.remove('hidden');
+                        poolList.innerHTML = '<div class="text-slate-500 py-1 text-center italic text-[10px]">Belum ada akun lain di pool.</div>';
+                    }
+                }
             } catch (err) {
                 console.error("Gagal ngambil status kuota:", err);
                 if (detailsDiv) detailsDiv.innerHTML = '<div class="text-red-400 py-2 text-center text-[11px]">Gagal nyambung menyang API.</div>';
             }
             lucide.createIcons();
+        }
+
+        async function switchAccount(email) {
+            try {
+                const res = await fetch('/api/auth/pool/switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                if (res.ok) {
+                    openQuotaModal(); // Refresh modal
+                } else {
+                    alert("Gagal ngalihake akun");
+                }
+            } catch (err) {
+                console.error("Gagal switch account:", err);
+            }
+        }
+
+        async function deleteAccount(email) {
+            if (confirm(`Njenengan yakin pengen mbusak akun ${email} saka pool?`)) {
+                try {
+                    const res = await fetch('/api/auth/pool/delete', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    if (res.ok) {
+                        openQuotaModal(); // Refresh modal
+                    } else {
+                        alert("Gagal mbusak akun");
+                    }
+                } catch (err) {
+                    console.error("Gagal delete account:", err);
+                }
+            }
+        }
+
+        async function addNewAccount() {
+            if (confirm("Njenengan bakal metu saka akun iki lan mlebu nganggo akun Google anyar. Lanjut?")) {
+                try {
+                    await fetch('/api/auth/logout', { method: 'POST' });
+                    window.location.href = '/login';
+                } catch (err) {
+                    console.error("Gagal logout:", err);
+                }
+            }
         }
 
         function closeQuotaModal() {
@@ -1700,7 +1790,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.2.8";
+                const current = "v1.2.9";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1716,7 +1806,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.2.8).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.2.9).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1813,7 +1903,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.2.8</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.2.9</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -1866,6 +1956,20 @@
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">GCP Project:</span>
                         <span id="quota-project" class="font-mono font-bold text-white truncate max-w-[200px]">Checking...</span>
+                    </div>
+                </div>
+
+                <!-- Account Pool (Switch Account) -->
+                <div id="account-pool-container" class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2 hidden">
+                    <div class="font-bold text-slate-200 text-[11px] uppercase tracking-wider">Pool Akun Google</div>
+                    <div id="account-pool-list" class="space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
+                        <!-- Accounts list here -->
+                    </div>
+                    <div class="pt-1.5 border-t border-brand-border/40 text-center">
+                        <button onclick="addNewAccount()" class="py-1 px-3 bg-brand-600/80 hover:bg-brand-700 text-white rounded-lg text-[10px] font-semibold transition inline-flex items-center space-x-1">
+                            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                            <span>Tambah Akun Anyar (Login Ulang)</span>
+                        </button>
                     </div>
                 </div>
 

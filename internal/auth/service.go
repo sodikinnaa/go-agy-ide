@@ -631,3 +631,195 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 	return res, nil
 }
 
+type AccountEntry struct {
+	Email        string `json:"email"`
+	KeyringValue string `json:"keyringValue"`
+}
+
+func fetchEmailFromToken(accessToken string) (string, error) {
+	req, err := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("userinfo API returned status %d", resp.StatusCode)
+	}
+	var data struct {
+		Email string `json:"email"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", err
+	}
+	return data.Email, nil
+}
+
+func (s *Service) GetAccountsPoolPath() string {
+	homeDir, _ := os.UserHomeDir()
+	return filepath.Join(homeDir, ".gemini", "antigravity-cli", "accounts_pool.json")
+}
+
+func (s *Service) LoadAccountsPool() ([]AccountEntry, error) {
+	path := s.GetAccountsPoolPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []AccountEntry{}, nil
+		}
+		return nil, err
+	}
+	var pool []AccountEntry
+	if err := json.Unmarshal(data, &pool); err != nil {
+		return nil, err
+	}
+	return pool, nil
+}
+
+func (s *Service) SaveAccountsPool(pool []AccountEntry) error {
+	path := s.GetAccountsPoolPath()
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
+	data, err := json.MarshalIndent(pool, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
+}
+
+func (s *Service) SyncCurrentAccountToPool() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 1. Get current keyring value
+	val, err := keyring.Get("gemini", "antigravity")
+	if err != nil {
+		return nil // Not logged in yet
+	}
+
+	// 2. Parse token
+	var kt struct {
+		Token struct {
+			AccessToken string `json:"access_token"`
+		} `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(val), &kt); err != nil {
+		return err
+	}
+
+	if kt.Token.AccessToken == "" {
+		return nil
+	}
+
+	// 3. Get email
+	email, err := fetchEmailFromToken(kt.Token.AccessToken)
+	if err != nil {
+		// Fallback to log parsing
+		email = s.GetAuthenticatedEmail()
+	}
+
+	if email == "" {
+		email = "Unknown Account"
+	}
+
+	// 4. Load pool
+	pool, err := s.LoadAccountsPool()
+	if err != nil {
+		pool = []AccountEntry{}
+	}
+
+	// 5. Update or add
+	found := false
+	for i, entry := range pool {
+		if entry.Email == email {
+			pool[i].KeyringValue = val
+			found = true
+			break
+		}
+	}
+	if !found {
+		pool = append(pool, AccountEntry{
+			Email:        email,
+			KeyringValue: val,
+		})
+	}
+
+	return s.SaveAccountsPool(pool)
+}
+
+func (s *Service) SwitchAccount(email string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	pool, err := s.LoadAccountsPool()
+	if err != nil {
+		return err
+	}
+
+	var targetVal string
+	for _, entry := range pool {
+		if entry.Email == email {
+			targetVal = entry.KeyringValue
+			break
+		}
+	}
+
+	if targetVal == "" {
+		return fmt.Errorf("account %s not found in pool", email)
+	}
+
+	// Set active keyring
+	err = keyring.Set("gemini", "antigravity", targetVal)
+	if err != nil {
+		return fmt.Errorf("failed to write to keyring: %w", err)
+	}
+
+	// Write dummy token file to signal we are logged in
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+	}
+
+	return nil
+}
+
+func (s *Service) DeleteAccount(email string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	pool, err := s.LoadAccountsPool()
+	if err != nil {
+		return err
+	}
+
+	newPool := []AccountEntry{}
+	for _, entry := range pool {
+		if entry.Email != email {
+			newPool = append(newPool, entry)
+		}
+	}
+
+	err = s.SaveAccountsPool(newPool)
+	if err != nil {
+		return err
+	}
+
+	// If the deleted account is the active one, log out of it
+	currentEmail := s.GetAuthenticatedEmail()
+	if currentEmail == email {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			_ = os.Remove(tokenPath)
+		}
+		_ = keyring.Delete("gemini", "antigravity")
+	}
+
+	return nil
+}
+

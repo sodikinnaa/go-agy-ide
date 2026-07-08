@@ -18,7 +18,7 @@ import (
 	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.2.8"
+const AppVersion = "v1.2.9"
 var versionRegex = regexp.MustCompile(`v1\.2\.[0-9]+`)
 
 type EmbeddedHTML struct {
@@ -257,6 +257,9 @@ func (h *Handler) HandleAuthSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// Automatically sync new account to the pool
+	_ = h.authSvc.SyncCurrentAccountToPool()
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Sukses mlebu"))
@@ -782,4 +785,78 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Pembaruan dimulai. Server bakal di-restart otomatis."))
+}
+
+type SwitchAccountRequest struct {
+	Email string `json:"email"`
+}
+
+// HandleGetAccountsPool returns the list of all pooled accounts and the active one
+func (h *Handler) HandleGetAccountsPool(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	// Automatically sync current account to pool if logged in
+	_ = h.authSvc.SyncCurrentAccountToPool()
+
+	pool, err := h.authSvc.LoadAccountsPool()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	emails := make([]string, len(pool))
+	for i, entry := range pool {
+		emails[i] = entry.Email
+	}
+
+	activeEmail := h.authSvc.GetAuthenticatedEmail()
+	
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"accounts": emails,
+		"active":   activeEmail,
+	})
+}
+
+// HandleSwitchAccount switches the active Google account
+func (h *Handler) HandleSwitchAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SwitchAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.authSvc.SwitchAccount(req.Email); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Sukses ganti akun"))
+}
+
+// HandleDeleteAccount removes an account from the pool
+func (h *Handler) HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req SwitchAccountRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.authSvc.DeleteAccount(req.Email); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Sukses mbusak akun"))
 }
