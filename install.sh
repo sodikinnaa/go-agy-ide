@@ -86,7 +86,7 @@ EOT
     cat <<'EOT' > update.sh
 #!/bin/bash
 echo "Mulai nglakokake update Mobile IDE..."
-curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=$(date +%s)" | bash
+exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=$(date +%s)" | bash'
 EOT
     chmod +x update.sh
 
@@ -187,7 +187,7 @@ case "\$1" in
         ;;
     update)
         echo "Updating Mobile IDE..."
-        curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=\$(date +%s)" | bash
+        exec bash -c 'curl -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh?v=\$(date +%s)" | bash'
         ;;
     uninstall)
         echo "Stopping Mobile IDE..."
