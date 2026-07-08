@@ -76,6 +76,12 @@ func (s *Service) VerifyPassword(pwd string) bool {
 	return s.secretPassword == "" || pwd == s.secretPassword
 }
 
+func (s *Service) GetPassword() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.secretPassword
+}
+
 func (s *Service) SessionToken() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

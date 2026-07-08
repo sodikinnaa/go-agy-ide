@@ -735,18 +735,36 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[UPDATE] Memulai pembaruan server otomatis...")
 
+	// Extract active port and password to preserve them during update
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	password := h.authSvc.GetPassword()
+
+	envContent := fmt.Sprintf("PORT=%s\nPASSWORD=%s\n", port, password)
+	startDir := h.workspaceSvc.ServerStartDir()
+
+	// Write to start directory .env
+	_ = os.WriteFile(filepath.Join(startDir, ".env"), []byte(envContent), 0600)
+
+	// Write to mobile-ide subdirectory .env
+	mobileIdeDir := filepath.Join(startDir, "mobile-ide")
+	_ = os.MkdirAll(mobileIdeDir, 0755)
+	_ = os.WriteFile(filepath.Join(mobileIdeDir, ".env"), []byte(envContent), 0600)
+
 	go func() {
 		// Tunggu 1 detik agar respon HTTP 200 OK sampai ke klien (HP) sebelum server mati/di-update
 		time.Sleep(1 * time.Second)
 
-		scriptPath := filepath.Join(h.workspaceSvc.ServerStartDir(), "update.sh")
+		scriptPath := filepath.Join(startDir, "update.sh")
 		var cmd *exec.Cmd
 		if _, err := os.Stat(scriptPath); err == nil {
 			cmd = exec.Command("bash", "-c", "nohup ./update.sh > update.log 2>&1 &")
 		} else {
-			cmd = exec.Command("bash", "-c", "nohup curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash > update.log 2>&1 &")
+			cmd = exec.Command("bash", "-c", "nohup curl -H \"Cache-Control: no-cache\" -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash > update.log 2>&1 &")
 		}
-		cmd.Dir = h.workspaceSvc.ServerStartDir()
+		cmd.Dir = startDir
 		_ = cmd.Run()
 	}()
 
