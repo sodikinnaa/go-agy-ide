@@ -125,14 +125,18 @@ func TestHandleAuthStatus(t *testing.T) {
 	}
 
 	// Verify JSON response structure
-	var resp map[string]bool
+	var resp map[string]any
 	err := json.NewDecoder(rr.Body).Decode(&resp)
 	if err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if _, ok := resp["authenticated"]; !ok {
+	authVal, ok := resp["authenticated"]
+	if !ok {
 		t.Errorf("expected 'authenticated' key in response")
+	}
+	if _, ok := authVal.(bool); !ok {
+		t.Errorf("expected 'authenticated' to be bool, got %T", authVal)
 	}
 }
 

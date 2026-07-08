@@ -15,3 +15,8 @@ password.txt
 
 # debug internal
 debug/
+
+# Local installation folder
+mobile-ide/
+*.log
+.env

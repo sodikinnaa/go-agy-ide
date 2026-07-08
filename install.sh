@@ -2,7 +2,7 @@
 set -e
 
 # Golek versi paling anyar saka GitHub Releases
-LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || echo "")
+LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases" 2>/dev/null | grep -m 1 '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || echo "")
 if [ -n "$LATEST_TAG" ]; then
     VERSION="$LATEST_TAG"
 else

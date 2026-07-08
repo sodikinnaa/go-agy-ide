@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -154,26 +155,67 @@ func (s *Service) CheckOAuthTokenExists() bool {
 	}
 
 	agyPath := FindAgyPath()
-	cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
-	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Run()
-	}()
+	var runErr error
+	useDirect := false
 
-	select {
-	case err := <-done:
-		if err == nil {
-			tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
-			_ = os.MkdirAll(tokenDir, 0755)
-			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
-			log.Printf("[AUTH] Nemokake sesi keychain sing wis ana. Nggawe file dummy token.")
-			return true
+	if _, err := exec.LookPath("script"); err != nil {
+		useDirect = true
+	}
+
+	if useDirect {
+		cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+		doneDirect := make(chan error, 1)
+		go func() {
+			doneDirect <- cmdDirect.Run()
+		}()
+		select {
+		case runErr = <-doneDirect:
+		case <-time.After(8 * time.Second):
+			if cmdDirect.Process != nil {
+				_ = cmdDirect.Process.Kill()
+			}
+			runErr = fmt.Errorf("timeout")
 		}
-	case <-time.After(8 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
+	} else {
+		cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
+		cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+		done := make(chan error, 1)
+		go func() {
+			done <- cmd.Run()
+		}()
+		select {
+		case runErr = <-done:
+		case <-time.After(8 * time.Second):
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			runErr = fmt.Errorf("timeout")
 		}
+
+		if runErr != nil {
+			log.Printf("[AUTH] CheckOAuthTokenExists: 'script' failed with error: %v. Retrying by running agy directly...", runErr)
+			cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+			doneDirect := make(chan error, 1)
+			go func() {
+				doneDirect <- cmdDirect.Run()
+			}()
+			select {
+			case runErr = <-doneDirect:
+			case <-time.After(8 * time.Second):
+				if cmdDirect.Process != nil {
+					_ = cmdDirect.Process.Kill()
+				}
+				runErr = fmt.Errorf("timeout")
+			}
+		}
+	}
+
+	if runErr == nil {
+		tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
+		_ = os.MkdirAll(tokenDir, 0755)
+		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		log.Printf("[AUTH] Nemokake sesi keychain sing wis ana. Nggawe file dummy token.")
+		return true
 	}
 
 	return false
@@ -192,8 +234,20 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	}
 
 	agyPath := FindAgyPath()
-	cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
-	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+	var cmd *exec.Cmd
+	useDirect := false
+
+	if _, err := exec.LookPath("script"); err != nil {
+		log.Printf("[AUTH] 'script' utility not found. Using direct command execution.")
+		useDirect = true
+	}
+
+	if useDirect {
+		cmd = exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+	} else {
+		cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
+		cmd = exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+	}
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ()
 
@@ -211,8 +265,27 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	log.Printf("[AUTH START] starting command: %v in dir: %s", cmd.Args, cmd.Dir)
 
 	if err := cmd.Start(); err != nil {
-		log.Printf("[AUTH ERROR] failed to start command: %v", err)
-		return "", fmt.Errorf("failed to start agy: %w", err)
+		log.Printf("[AUTH ERROR] failed to start command (useDirect=%v): %v", useDirect, err)
+		if !useDirect {
+			log.Printf("[AUTH] Retrying StartGoogleAuth using direct execution fallback...")
+			cmd = exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+			cmd.Dir = activeWorkspaceDir
+			cmd.Env = os.Environ()
+			stdinPipe, err = cmd.StdinPipe()
+			if err != nil {
+				return "", fmt.Errorf("failed to create stdin pipe: %w", err)
+			}
+			stdoutPipe, err = cmd.StdoutPipe()
+			if err != nil {
+				return "", fmt.Errorf("failed to create stdout pipe: %w", err)
+			}
+			cmd.Stderr = cmd.Stdout
+			if err := cmd.Start(); err != nil {
+				return "", fmt.Errorf("failed to start agy directly: %w", err)
+			}
+		} else {
+			return "", fmt.Errorf("failed to start agy: %w", err)
+		}
 	}
 
 	s.activeAuthCmd = cmd
@@ -334,4 +407,70 @@ func (s *Service) Logout() {
 		_ = os.Remove(tokenPath)
 	}
 	s.ClearSession()
+}
+
+type SettingsStruct struct {
+	GCP struct {
+		Project  string `json:"project"`
+		Location string `json:"location"`
+	} `json:"gcp"`
+}
+
+func (s *Service) GetGCPProject() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	settingsPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "settings.json")
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return ""
+	}
+	var settings SettingsStruct
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return ""
+	}
+	return settings.GCP.Project
+}
+
+func (s *Service) GetAuthenticatedEmail() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	logDir := filepath.Join(homeDir, ".gemini", "antigravity-cli", "log")
+	entries, err := os.ReadDir(logDir)
+	if err != nil {
+		return ""
+	}
+
+	// Sort files by name descending to get the newest first
+	// Log files are named like cli-YYYYMMDD_HHMMSS.log
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		if !entry.IsDir() && strings.HasPrefix(entry.Name(), "cli-") && strings.HasSuffix(entry.Name(), ".log") {
+			latestFile := filepath.Join(logDir, entry.Name())
+			data, err := os.ReadFile(latestFile)
+			if err == nil {
+				content := string(data)
+				// Search for "OAuth: authenticated successfully as "
+				const pattern = "OAuth: authenticated successfully as "
+				if idx := strings.LastIndex(content, pattern); idx != -1 {
+					sub := content[idx+len(pattern):]
+					if endIdx := strings.IndexAny(sub, "\r\n\t "); endIdx != -1 {
+						return sub[:endIdx]
+					}
+				}
+				// Try another pattern: "applyAuthResult: email="
+				const pattern2 = "applyAuthResult: email="
+				if idx := strings.LastIndex(content, pattern2); idx != -1 {
+					sub := content[idx+len(pattern2):]
+					if endIdx := strings.IndexAny(sub, ",\r\n\t "); endIdx != -1 {
+						return sub[:endIdx]
+					}
+				}
+			}
+		}
+	}
+	return ""
 }

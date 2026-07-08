@@ -51,15 +51,29 @@ func (s *Service) StartCommand(ctx context.Context, command string, activeWorksp
 // GetModelsList fetches available models from agy CLI or falls back to defaults
 func (s *Service) GetModelsList() ([]string, error) {
 	agyPath := auth.FindAgyPath()
-	cmdStr := fmt.Sprintf("%s models", agyPath)
-	cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
-	cmd.Env = os.Environ()
+	var outputBytes []byte
+	var err error
 
-	outputBytes, err := cmd.Output()
-	if err != nil {
-		cmdDirect := exec.Command(auth.FindAgyPath(), "models")
+	useDirect := false
+	if _, lookErr := exec.LookPath("script"); lookErr != nil {
+		useDirect = true
+	}
+
+	if useDirect {
+		cmdDirect := exec.Command(agyPath, "models")
 		cmdDirect.Env = os.Environ()
 		outputBytes, err = cmdDirect.Output()
+	} else {
+		cmdStr := fmt.Sprintf("%s models", agyPath)
+		cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+		cmd.Env = os.Environ()
+		outputBytes, err = cmd.Output()
+
+		if err != nil {
+			cmdDirect := exec.Command(agyPath, "models")
+			cmdDirect.Env = os.Environ()
+			outputBytes, err = cmdDirect.Output()
+		}
 	}
 
 	if err != nil {
