@@ -107,6 +107,9 @@
             <button onclick="saveActiveFile()" class="p-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition duration-200 flex items-center justify-center" title="Save File">
                 <i data-lucide="save" class="w-4 h-4"></i>
             </button>
+            <button onclick="openQuotaModal()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Quota & Account Info">
+                <i data-lucide="user" class="w-4 h-4"></i>
+            </button>
             <button onclick="refreshWorkspace()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Refresh">
                 <i data-lucide="refresh-cw" class="w-4 h-4"></i>
             </button>
@@ -1594,6 +1597,88 @@
                 .replace(/'/g, "&#039;");
         }
 
+
+        // --- Quota & Account Modal Utilities ---
+        async function openQuotaModal() {
+            document.getElementById('quota-modal').classList.remove('hidden');
+            const emailSpan = document.getElementById('quota-email');
+            const projectSpan = document.getElementById('quota-project');
+            const detailsDiv = document.getElementById('quota-details');
+            
+            if (emailSpan) emailSpan.innerText = 'Checking...';
+            if (projectSpan) projectSpan.innerText = 'Checking...';
+            if (detailsDiv) detailsDiv.innerHTML = '<div class="text-slate-400 py-4 text-center animate-pulse">Loading quota info...</div>';
+            
+            try {
+                const [statusRes, quotaRes] = await Promise.all([
+                    fetch('/api/auth/status'),
+                    fetch('/api/quota')
+                ]);
+                
+                if (statusRes.ok) {
+                    const statusData = await statusRes.json();
+                    if (emailSpan) emailSpan.innerText = statusData.email || 'Ora Mlebu (Belum Login)';
+                    if (projectSpan) projectSpan.innerText = statusData.project || 'Ora Ono (Belum Ada Project)';
+                }
+                
+                if (quotaRes.ok) {
+                    const quotaData = await quotaRes.json();
+                    if (detailsDiv) {
+                        if (quotaData.exhausted) {
+                            detailsDiv.innerHTML = `
+                                <div class="bg-red-950/30 border border-red-900/50 p-3 rounded-xl flex items-center space-x-3 text-red-400">
+                                    <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0"></i>
+                                    <div>
+                                        <div class="font-bold text-[11px] uppercase tracking-wider">Quota Exhausted</div>
+                                        <div class="text-[10px] text-slate-400">${quotaData.error || 'Resource has been exhausted.'}</div>
+                                    </div>
+                                </div>
+                            `;
+                        } else if (quotaData.groups && quotaData.groups.length > 0) {
+                            let html = '<div class="space-y-3">';
+                            quotaData.groups.forEach(g => {
+                                const pct = Math.round(g.remainingFraction * 100);
+                                let progressColor = 'bg-green-500';
+                                if (pct < 20) {
+                                    progressColor = 'bg-red-500';
+                                } else if (pct < 50) {
+                                    progressColor = 'bg-yellow-500';
+                                }
+                                
+                                html += `
+                                    <div class="space-y-1">
+                                        <div class="flex justify-between items-center text-[11px]">
+                                            <span class="font-semibold text-slate-200">${escapeHtml(g.groupName)}</span>
+                                            <span class="font-bold text-white">${pct}%</span>
+                                        </div>
+                                        ${g.groupDescription ? `<div class="text-[10px] text-slate-400">${escapeHtml(g.groupDescription)}</div>` : ''}
+                                        <div class="w-full bg-brand-dark/60 rounded-full h-1.5 overflow-hidden border border-brand-border">
+                                            <div class="${progressColor} h-1.5 rounded-full" style="width: ${pct}%"></div>
+                                        </div>
+                                        ${g.resetTime ? `<div class="text-[9px] text-slate-500 text-right">Resets: ${new Date(g.resetTime).toLocaleString()}</div>` : ''}
+                                    </div>
+                                `;
+                            });
+                            html += '</div>';
+                            detailsDiv.innerHTML = html;
+                        } else {
+                            detailsDiv.innerHTML = '<div class="text-slate-400 py-2 text-center italic text-[11px]">Batas Quota Standard Active (No limits recorded).</div>';
+                        }
+                    }
+                } else {
+                    if (detailsDiv) detailsDiv.innerHTML = '<div class="text-red-400 py-2 text-center text-[11px]">Gagal ngambil detail quota.</div>';
+                }
+            } catch (err) {
+                console.error("Gagal ngambil status kuota:", err);
+                if (detailsDiv) detailsDiv.innerHTML = '<div class="text-red-400 py-2 text-center text-[11px]">Gagal nyambung menyang API.</div>';
+            }
+            lucide.createIcons();
+        }
+
+        function closeQuotaModal() {
+            document.getElementById('quota-modal').classList.add('hidden');
+        }
+
         // --- Update & Webhook Modal Utilities ---
         function openUpdateModal() {
             document.getElementById('update-modal').classList.remove('hidden');
@@ -1756,6 +1841,58 @@
                 </div>
 
                 </div>
+        </div>
+    </div>
+
+    <!-- Quota & Account Modal -->
+    <div id="quota-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-brand-panel border border-brand-border p-6 rounded-2xl shadow-2xl relative shadow-purple-900/10">
+            <button onclick="closeQuotaModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <h2 class="text-lg font-bold text-white mb-2 flex items-center space-x-2">
+                <i data-lucide="database" class="w-5 h-5 text-brand-accent animate-pulse"></i>
+                <span>Informasi Akun & Quota</span>
+            </h2>
+            <p class="text-[11px] text-slate-400 mb-4">Informasi akun Google sing digunakake sarta detail quota model.</p>
+            
+            <div class="space-y-4 text-xs">
+                <!-- Account Info -->
+                <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 font-medium">Akun Google:</span>
+                        <span id="quota-email" class="font-mono font-bold text-white truncate max-w-[200px]">Checking...</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-400 font-medium">GCP Project:</span>
+                        <span id="quota-project" class="font-mono font-bold text-white truncate max-w-[200px]">Checking...</span>
+                    </div>
+                </div>
+
+                <!-- Limits/Quota info dynamically loaded -->
+                <div id="quota-details" class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2.5">
+                    <!-- Loading/Quota details here -->
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="bg-purple-950/20 border border-brand-accent/30 p-3 rounded-xl space-y-2">
+                    <div class="font-bold text-white mb-1 flex items-center space-x-1">
+                        <i data-lucide="external-link" class="w-4 h-4 text-brand-accent"></i>
+                        <span>Link Penting</span>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-center">
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="py-2 px-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[10px] font-semibold transition">
+                            Google AI Studio
+                        </a>
+                        <a href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas" target="_blank" class="py-2 px-2.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded-xl text-[10px] font-semibold transition">
+                            GCP API Quotas
+                        </a>
+                    </div>
+                    <p class="text-[10px] text-slate-400 pt-1 text-center italic">
+                        *Detail panggunaan kredit organisasi bisa dipriksa nganggo perintah <code class="font-mono bg-brand-dark px-1 py-0.5 rounded text-brand-accent">/credits</code> ing Terminal CLI.
+                    </p>
+                </div>
+            </div>
         </div>
     </div>
 </body>
