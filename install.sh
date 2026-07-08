@@ -1,18 +1,24 @@
 #!/bin/bash
 set -e
 
-# Golek versi paling anyar saka GitHub Releases
-LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases" 2>/dev/null | grep -m 1 '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || echo "")
-if [ -n "$LATEST_TAG" ]; then
-    VERSION="$LATEST_TAG"
+REQUESTED_VERSION="${1:-${VERSION:-}}"
+if [ -n "$REQUESTED_VERSION" ] && [ "$REQUESTED_VERSION" != "latest" ]; then
+    VERSION="$REQUESTED_VERSION"
 else
-    VERSION="v1.3.testing.2" # Fallback
+    # Golek versi paling anyar saka GitHub Releases
+    LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases" 2>/dev/null | grep -m 1 '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || echo "")
+    if [ -n "$LATEST_TAG" ]; then
+        VERSION="$LATEST_TAG"
+    else
+        VERSION="v1.3.testing.3" # Fallback
+    fi
 fi
 
 # Tampilan header
 echo "================================================="
 echo "        Mobile IDE One-Line Installer           "
 echo "================================================="
+echo "Versi target: $VERSION"
 echo "Mulai ngundhuh pre-compiled binary saka GitHub..."
 
 # 1. Deteksi OS lan Arsitektur CPU
@@ -91,8 +97,12 @@ EOT
     # Nggawe/nganyari script update.sh supaya user gampang nglakokake update
     cat <<'EOT' > update.sh
 #!/bin/bash
-echo "Mulai nglakokake update Mobile IDE..."
-exec bash -c 'curl -H "Cache-Control: no-cache" -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh" | bash'
+set -e
+TARGET_VERSION="${1:-${VERSION:-latest}}"
+INSTALLER_TMP="${TMPDIR:-/tmp}/mobile-agy-install.sh"
+echo "Mulai nglakokake update Mobile IDE menyang versi: $TARGET_VERSION"
+curl -H 'Cache-Control: no-cache' -fsSL 'https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh' -o "$INSTALLER_TMP"
+exec env VERSION="$TARGET_VERSION" bash "$INSTALLER_TMP"
 EOT
     chmod +x update.sh
 
@@ -192,8 +202,26 @@ case "\$1" in
         fi
         ;;
     update)
-        echo "Updating Mobile IDE..."
-        exec bash -c 'curl -H "Cache-Control: no-cache" -fsSL "https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh" | bash'
+        TARGET_VERSION="\${2:-latest}"
+        INSTALLER_TMP="\${TMPDIR:-/tmp}/mobile-agy-install.sh"
+        echo "Updating Mobile IDE to \$TARGET_VERSION..."
+        curl -H 'Cache-Control: no-cache' -fsSL 'https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh' -o "\$INSTALLER_TMP"
+        exec env VERSION="\$TARGET_VERSION" bash "\$INSTALLER_TMP"
+        ;;
+    install-version)
+        if [ -z "\$2" ]; then
+            echo "Usage: agy-mobile install-version <tag>"
+            echo "Example: agy-mobile install-version v1.3.testing.3"
+            exit 1
+        fi
+        TARGET_VERSION="\$2"
+        INSTALLER_TMP="\${TMPDIR:-/tmp}/mobile-agy-install.sh"
+        echo "Installing Mobile IDE version \$TARGET_VERSION..."
+        curl -H 'Cache-Control: no-cache' -fsSL 'https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh' -o "\$INSTALLER_TMP"
+        exec env VERSION="\$TARGET_VERSION" bash "\$INSTALLER_TMP"
+        ;;
+    releases)
+        curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30" | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/'
         ;;
     uninstall)
         echo "Stopping Mobile IDE..."
@@ -206,7 +234,7 @@ case "\$1" in
             rm -f "\$HOME/.local/bin/agy-mobile"
             echo "Removed global command 'agy-mobile'."
         fi
-        
+
         if [ -c /dev/tty ]; then
             read -p "Do you want to delete the installation directory (\$INSTALL_DIR)? (y/N): " choice < /dev/tty
         else
@@ -221,7 +249,7 @@ case "\$1" in
         echo "Mobile IDE successfully uninstalled."
         ;;
     *)
-        echo "Usage: agy-mobile {start|stop|restart|status|log|logs|update|uninstall}"
+        echo "Usage: agy-mobile {start|stop|restart|status|log|logs|update [version]|install-version <version>|releases|uninstall}"
         exit 1
         ;;
 esac
@@ -265,11 +293,11 @@ else
     fi
     # Pindhah binary anyar menyang panggonan utama
     mv -f "$TEMP_BINARY" "$BINARY_NAME"
-    
+
     # Mandhegake proses lawas sing saiki mlaku minangka .old
     pkill -f mobile-agy 2>/dev/null || true
     sleep 0.2
-    
+
     # Hapus file .old (bakal dibusak sakwise proses lawas mati)
     rm -f "${BINARY_NAME}.old" 2>/dev/null || true
 fi
@@ -351,14 +379,24 @@ if [ -z "$DBUS_ADDR" ]; then
     fi
 fi
 
-# Tulis/nganyari file konfigurasi .env
-cat <<EOT > .env
-PORT=$PORT
-PASSWORD=$GEN_PASSWORD
-EOT
+# Tulis/nganyari file konfigurasi .env tanpa mbusak setelan liyane (OPENAI_API_KEY, OPENAI_API_BASE, lsp.)
+touch .env
+set_env_var() {
+    local key="$1"
+    local value="$2"
+    local escaped
+    escaped=$(printf '%s' "$value" | sed 's/[&/\\]/\\&/g')
+    if grep -qE "^${key}=" .env; then
+        sed -i.bak "s/^${key}=.*/${key}=${escaped}/" .env && rm -f .env.bak
+    else
+        echo "${key}=${value}" >> .env
+    fi
+}
 
+set_env_var "PORT" "$PORT"
+set_env_var "PASSWORD" "$GEN_PASSWORD"
 if [ -n "$DBUS_ADDR" ]; then
-    echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_ADDR" >> .env
+    set_env_var "DBUS_SESSION_BUS_ADDRESS" "$DBUS_ADDR"
 fi
 
 # Nggawe/nganyari kabeh script start.sh, update.sh, lan agy-mobile

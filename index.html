@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.3.testing.2</span>
+                    <span class="text-[10px] text-slate-400">v1.3.testing.3</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1963,43 +1963,55 @@
             const statusMsg = document.getElementById('update-status-msg');
             const dot = document.getElementById('update-dot');
             const updateInst = document.getElementById('update-inst');
-            
+            const releaseSelect = document.getElementById('release-version-select');
+
             try {
-                const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases/latest');
+                const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30');
                 if (!res.ok) throw new Error();
-                const data = await res.json();
-                const latest = data.tag_name;
-                const current = "v1.3.testing.2";
+                const releases = await res.json();
+                const latest = releases?.[0]?.tag_name || 'latest';
+                const current = "v1.3.testing.3";
 
                 if (verDisplay) verDisplay.innerText = latest;
-                
+                if (releaseSelect) {
+                    releaseSelect.innerHTML = '<option value="latest">latest (rilis paling anyar)</option>';
+                    releases.forEach(rel => {
+                        if (!rel.tag_name) return;
+                        const opt = document.createElement('option');
+                        opt.value = rel.tag_name;
+                        opt.textContent = `${rel.tag_name}${rel.prerelease ? ' (testing/pre-release)' : ''}`;
+                        releaseSelect.appendChild(opt);
+                    });
+                }
+
                 if (latest && latest !== current) {
                     if (dot) {
                         dot.className = "w-1.5 h-1.5 rounded-full bg-green-500 animate-ping";
                         dot.title = `Update ${latest} kasedhiya!`;
                     }
                     if (statusMsg) statusMsg.innerHTML = `<span class="text-green-400 font-bold">Update versi ${latest} kasedhiya!</span>`;
-                    if (updateInst) updateInst.classList.remove('hidden');
                 } else {
                     if (dot) {
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.2).</span>`;
-                    if (updateInst) updateInst.classList.add('hidden');
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.3). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
                 }
+                if (updateInst) updateInst.classList.remove('hidden');
             } catch (err) {
                 if (verDisplay) verDisplay.innerText = "Gagal mriksa";
                 if (statusMsg) statusMsg.innerHTML = `<span class="text-red-400">Gagal nyambung menyang GitHub API.</span>`;
+                if (updateInst) updateInst.classList.remove('hidden');
             }
-            
+
             lucide.createIcons();
         }
 
         async function triggerSelfUpdate() {
             const btn = document.getElementById('btn-run-update');
             const progress = document.getElementById('update-progress-msg');
-            
+            const targetVersion = document.getElementById('release-version-select')?.value || 'latest';
+
             if (btn) {
                 btn.disabled = true;
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -2007,14 +2019,17 @@
             }
             if (progress) {
                 progress.classList.remove('hidden');
+                progress.innerText = `Mulai nganyari menyang ${targetVersion}, server bakal restart otomatis...`;
             }
 
             try {
                 const res = await fetch('/api/update', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ version: targetVersion })
                 });
                 if (res.ok) {
-                    logToTerminal('[SYSTEM] Update command triggered successfully. Reconnecting in 8 seconds...');
+                    logToTerminal(`[SYSTEM] Update command triggered for ${targetVersion}. Reconnecting in 8 seconds...`);
                     setTimeout(() => {
                         window.location.reload();
                     }, 8000);
@@ -2033,6 +2048,7 @@
                 }
             }
         }
+
     </script>
 
     <!-- Workspace Modal -->
@@ -2082,7 +2098,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.2</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.3</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -2099,7 +2115,12 @@
                         <i data-lucide="arrow-up-circle" class="w-4 h-4 text-brand-accent animate-bounce"></i>
                         <span>Pembaruan Kasedhiya!</span>
                     </div>
-                    <p class="text-slate-300 leading-relaxed text-[11px]">Njenengan bisa langsung nganyari server menyang versi anyar kanthi sekali klik:</p>
+                    <p class="text-slate-300 leading-relaxed text-[11px]">Njenengan bisa langsung nganyari server menyang versi anyar, testing, utawa downgrade menyang rilis lawas kanthi sekali klik:</p>
+                    <label for="release-version-select" class="block text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Versi target</label>
+                    <select id="release-version-select" class="w-full bg-brand-dark border border-brand-border text-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-brand-accent">
+                        <option value="latest">latest (rilis paling anyar)</option>
+                    </select>
+                    <p class="text-[10px] text-slate-500">Pilih tag spesifik kanggo install versi testing/lawas sing wis pernah dirilis.</p>
                     <button id="btn-run-update" onclick="triggerSelfUpdate()" class="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow-lg shadow-green-900/20">
                         <i data-lucide="download-cloud" class="w-4 h-4"></i>
                         <span>Update Saiki</span>

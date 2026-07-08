@@ -39,12 +39,24 @@ Berikut adalah galeri tampilan antarmuka Mobile IDE pada perangkat seluler (HP A
 
 ## Cara Instalasi & Kompilasi
 
-### Cara Cepet (One-Line Installer - Tanpa Perlu Install Go/Compiler):
+### Cara Cepat (One-Line Installer - Tanpa Perlu Install Go/Compiler):
 Cukup jalankan perintah iki ing terminal server utawa Termux HP kanggo ngundhuh pre-compiled binary lan nyiapake kabeh kanthi otomatis:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash
 ```
 *Script iki bakal otomatis ndeteksi OS lan arsitektur CPU (Linux AMD64, Linux ARM64, MacOS, lsp.) sarta ngundhuh binary sing cocog saka kaca Rilis GitHub.*
+
+Yen pengin install versi/tag tartamtu sing wis dirilis, undhuh installer dhisik banjur lebokake tag-e:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh -o install.sh
+bash install.sh v1.3.testing.3
+```
+Utawa nganggo environment variable:
+```bash
+curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh -o install.sh
+VERSION=v1.3.5 bash install.sh
+```
+Iki iso kanggo update menyang versi testing utawa downgrade menyang rilis lawas.
 
 ### Cara Manual (Ngompilasi Dewe):
 1. **Download source code** lan mlebu menyang folder:
@@ -232,6 +244,15 @@ Sawise instalasi, njenengan bisa nggunakake perintah global `agy-mobile` saka ng
   ```bash
   agy-mobile update
   ```
+* **Nampilake daftar rilis/tag sing kasedhiya**:
+  ```bash
+  agy-mobile releases
+  ```
+* **Nganyari utawa downgrade menyang versi tartamtu**:
+  ```bash
+  agy-mobile update v1.3.testing.3
+  agy-mobile install-version v1.3.5
+  ```
 * **Mbusak instalasi (uninstall) Mobile IDE**:
   ```bash
   agy-mobile uninstall
@@ -245,7 +266,12 @@ Yen ana versi anyar utawa update, saliyane nganggo `agy-mobile update`, njenenga
 ```bash
 ./update.sh
 ```
-*Script iki bakal otomatis ngundhuh installer paling anyar saka GitHub, nganyari binary program, lan miwiti maneh server **tanpa ngowahi port utawa sandi akses** sing wis disimpen ing file `.env`.*
+Kanggo target versi spesifik:
+```bash
+./update.sh v1.3.testing.3
+./update.sh v1.3.5
+```
+*Script iki bakal otomatis ngundhuh installer paling anyar saka GitHub, nganyari binary program, lan miwiti maneh server **tanpa ngowahi port, sandi akses, utawa setelan OpenAI-compatible** sing wis disimpen ing file `.env`.*
 
 ---
 

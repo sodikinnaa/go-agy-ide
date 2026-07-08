@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.3.testing.2"
+const AppVersion = "v1.3.testing.3"
 
 var versionRegex = regexp.MustCompile(`v1\.3\.[0-9a-zA-Z.-]+`)
 
@@ -812,6 +812,47 @@ func (h *Handler) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("Webhook received successfully. Pulling changes..."))
 }
 
+func writeMergedEnv(path string, updates map[string]string) error {
+	existing := map[string]string{}
+	order := []string{}
+
+	if data, err := os.ReadFile(path); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") || !strings.Contains(line, "=") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			key := strings.TrimSpace(parts[0])
+			if key == "" {
+				continue
+			}
+			if _, ok := existing[key]; !ok {
+				order = append(order, key)
+			}
+			existing[key] = parts[1]
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	for key, val := range updates {
+		if _, ok := existing[key]; !ok {
+			order = append(order, key)
+		}
+		existing[key] = strings.ReplaceAll(val, "\n", "")
+	}
+
+	var b strings.Builder
+	for _, key := range order {
+		b.WriteString(key)
+		b.WriteString("=")
+		b.WriteString(existing[key])
+		b.WriteString("\n")
+	}
+	return os.WriteFile(path, []byte(b.String()), 0600)
+}
+
 // HandleSelfUpdate triggers a background update process
 func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -819,7 +860,24 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[UPDATE] Memulai pembaruan server otomatis...")
+	version := r.FormValue("version")
+	if version == "" && strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var req struct {
+			Version string `json:"version"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			version = strings.TrimSpace(req.Version)
+		}
+	}
+	if version == "" {
+		version = "latest"
+	}
+	if !regexp.MustCompile(`^[A-Za-z0-9._-]+$`).MatchString(version) {
+		http.Error(w, "invalid version", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[UPDATE] Memulai pembaruan server otomatis menyang versi: %s...", version)
 
 	// Extract active port, password and dbus address to preserve them during update
 	port := os.Getenv("PORT")
@@ -829,19 +887,21 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 	password := h.authSvc.GetPassword()
 	dbusAddr := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
 
-	envContent := fmt.Sprintf("PORT=%s\nPASSWORD=%s\n", port, password)
-	if dbusAddr != "" {
-		envContent += fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=%s\n", dbusAddr)
-	}
 	startDir := h.workspaceSvc.ServerStartDir()
 
-	// Write to start directory .env
-	_ = os.WriteFile(filepath.Join(startDir, ".env"), []byte(envContent), 0600)
+	// Preserve all existing .env values, including OpenAI-compatible settings.
+	envUpdates := map[string]string{
+		"PORT":     port,
+		"PASSWORD": password,
+	}
+	if dbusAddr != "" {
+		envUpdates["DBUS_SESSION_BUS_ADDRESS"] = dbusAddr
+	}
+	_ = writeMergedEnv(filepath.Join(startDir, ".env"), envUpdates)
 
-	// Write to mobile-ide subdirectory .env
 	mobileIdeDir := filepath.Join(startDir, "mobile-ide")
 	_ = os.MkdirAll(mobileIdeDir, 0755)
-	_ = os.WriteFile(filepath.Join(mobileIdeDir, ".env"), []byte(envContent), 0600)
+	_ = writeMergedEnv(filepath.Join(mobileIdeDir, ".env"), envUpdates)
 
 	go func() {
 		// Tunggu 1 detik agar respon HTTP 200 OK sampai ke klien (HP) sebelum server mati/di-update
@@ -850,16 +910,17 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 		scriptPath := filepath.Join(startDir, "update.sh")
 		var cmd *exec.Cmd
 		if _, err := os.Stat(scriptPath); err == nil {
-			cmd = exec.Command("bash", "-c", "nohup ./update.sh > update.log 2>&1 &")
+			cmd = exec.Command("bash", "-c", "nohup ./update.sh \"$UPDATE_VERSION\" > update.log 2>&1 &")
 		} else {
-			cmd = exec.Command("bash", "-c", "nohup curl -H \"Cache-Control: no-cache\" -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash > update.log 2>&1 &")
+			cmd = exec.Command("bash", "-c", "nohup bash -c 'set -e; installer_tmp=\"${TMPDIR:-/tmp}/mobile-agy-install.sh\"; curl -H \"Cache-Control: no-cache\" -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh -o \"$installer_tmp\"; env VERSION=\"$UPDATE_VERSION\" bash \"$installer_tmp\"' > update.log 2>&1 &")
 		}
 		cmd.Dir = startDir
+		cmd.Env = append(os.Environ(), "UPDATE_VERSION="+version)
 		_ = cmd.Run()
 	}()
 
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("Pembaruan dimulai. Server bakal di-restart otomatis."))
+	_, _ = w.Write([]byte("Pembaruan dimulai menyang versi " + version + ". Server bakal di-restart otomatis."))
 }
 
 type SwitchAccountRequest struct {
