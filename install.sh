@@ -6,7 +6,7 @@ LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/rele
 if [ -n "$LATEST_TAG" ]; then
     VERSION="$LATEST_TAG"
 else
-    VERSION="v1.3.1" # Fallback
+    VERSION="v1.3.2" # Fallback
 fi
 
 # Tampilan header
@@ -340,12 +340,25 @@ else
 
     # Generate sandi keamanan acak (12 karakter)
     GEN_PASSWORD=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 12 2>/dev/null || echo "AgyPass123")
-    
-    # Nggawe file konfigurasi .env anyar
-    cat <<EOT > .env
+fi
+
+# Dapatkan DBUS address saka session utawa socket default
+DBUS_ADDR="$DBUS_SESSION_BUS_ADDRESS"
+if [ -z "$DBUS_ADDR" ]; then
+    MY_UID=$(id -u)
+    if [ -S "/run/user/$MY_UID/bus" ]; then
+        DBUS_ADDR="unix:path=/run/user/$MY_UID/bus"
+    fi
+fi
+
+# Tulis/nganyari file konfigurasi .env
+cat <<EOT > .env
 PORT=$PORT
 PASSWORD=$GEN_PASSWORD
 EOT
+
+if [ -n "$DBUS_ADDR" ]; then
+    echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_ADDR" >> .env
 fi
 
 # Nggawe/nganyari kabeh script start.sh, update.sh, lan agy-mobile

@@ -18,7 +18,7 @@ import (
 	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.3.1"
+const AppVersion = "v1.3.2"
 var versionRegex = regexp.MustCompile(`v[0-9]+\.[0-9]+\.[0-9]+`)
 
 type EmbeddedHTML struct {
@@ -750,14 +750,18 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[UPDATE] Memulai pembaruan server otomatis...")
 
-	// Extract active port and password to preserve them during update
+	// Extract active port, password and dbus address to preserve them during update
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	password := h.authSvc.GetPassword()
+	dbusAddr := os.Getenv("DBUS_SESSION_BUS_ADDRESS")
 
 	envContent := fmt.Sprintf("PORT=%s\nPASSWORD=%s\n", port, password)
+	if dbusAddr != "" {
+		envContent += fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=%s\n", dbusAddr)
+	}
 	startDir := h.workspaceSvc.ServerStartDir()
 
 	// Write to start directory .env
