@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 	"mobile-agy/internal/auth"
@@ -16,6 +17,9 @@ import (
 	"mobile-agy/internal/terminal"
 	"mobile-agy/internal/workspace"
 )
+
+const AppVersion = "v1.2.6"
+var versionRegex = regexp.MustCompile(`v1\.2\.[0-9]+`)
 
 type EmbeddedHTML struct {
 	IndexHTML    string
@@ -121,12 +125,18 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // HandleIndex serves the main IDE single-page application
 func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	var htmlContent string
 	content, err := os.ReadFile(filepath.Join(h.workspaceSvc.ServerStartDir(), "index.html"))
 	if err == nil {
-		_, _ = w.Write(content)
-		return
+		htmlContent = string(content)
+	} else {
+		htmlContent = h.html.IndexHTML
 	}
-	_, _ = w.Write([]byte(h.html.IndexHTML))
+
+	// Dynamically replace hardcoded version "v1.2.x" with current AppVersion
+	htmlContent = versionRegex.ReplaceAllString(htmlContent, AppVersion)
+
+	_, _ = w.Write([]byte(htmlContent))
 }
 
 // HandleLoginPage serves Google OAuth login page
@@ -194,6 +204,7 @@ func (h *Handler) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 		"authenticated": h.authSvc.CheckOAuthTokenExists(),
 		"email":         h.authSvc.GetAuthenticatedEmail(),
 		"project":       h.authSvc.GetGCPProject(),
+		"version":       AppVersion,
 	})
 }
 

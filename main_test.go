@@ -138,6 +138,14 @@ func TestHandleAuthStatus(t *testing.T) {
 	if _, ok := authVal.(bool); !ok {
 		t.Errorf("expected 'authenticated' to be bool, got %T", authVal)
 	}
+
+	versionVal, ok := resp["version"]
+	if !ok {
+		t.Errorf("expected 'version' key in response")
+	}
+	if versionVal != "v1.2.6" {
+		t.Errorf("expected version to be 'v1.2.6', got %v", versionVal)
+	}
 }
 
 func TestHandleQuotaSummaryUnauthorized(t *testing.T) {
