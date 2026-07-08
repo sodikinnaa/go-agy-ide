@@ -5,10 +5,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/zalando/go-keyring"
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
 	"mobile-agy/internal/handler"
@@ -143,8 +145,8 @@ func TestHandleAuthStatus(t *testing.T) {
 	if !ok {
 		t.Errorf("expected 'version' key in response")
 	}
-	if versionVal != "v1.3.5" {
-		t.Errorf("expected version to be 'v1.3.5', got %v", versionVal)
+	if versionVal != "v1.3.testing.1" {
+		t.Errorf("expected version to be 'v1.3.testing.1', got %v", versionVal)
 	}
 }
 
@@ -686,5 +688,137 @@ func TestAccountPoolAPI(t *testing.T) {
 	h.AuthMiddleware(h.HandleClearGoogleAuth).ServeHTTP(rrClear, reqClear)
 	if rrClear.Code != http.StatusOK {
 		t.Errorf("expected status 200 on google clear, got %d", rrClear.Code)
+	}
+}
+
+func TestStartGoogleAuthAndSubmitGoogleAuthCode(t *testing.T) {
+	// 1. Backup existing keyring and token file
+	backupVal, backupErr := keyring.Get("gemini", "antigravity")
+	homeDir, _ := os.UserHomeDir()
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+	var backupFileContent []byte
+	backupFileExist := false
+	if _, err := os.Stat(tokenPath); err == nil {
+		backupFileContent, _ = os.ReadFile(tokenPath)
+		backupFileExist = true
+		_ = os.Remove(tokenPath)
+	}
+
+	defer func() {
+		// Restore everything in deferred cleanup
+		if backupErr == nil {
+			_ = keyring.Set("gemini", "antigravity", backupVal)
+		} else {
+			_ = keyring.Delete("gemini", "antigravity")
+		}
+		if backupFileExist {
+			_ = os.WriteFile(tokenPath, backupFileContent, 0600)
+		} else {
+			_ = os.Remove(tokenPath)
+		}
+	}()
+
+	// 2. Create mock agy Go program source code
+	tempDir, err := os.MkdirTemp("", "mock-agy-dir")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	mockSource := `package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"github.com/zalando/go-keyring"
+)
+
+func logMsg(msg string) {
+	f, _ := os.OpenFile("/tmp/mock-agy.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	if f != nil {
+		f.WriteString(msg + "\n")
+		f.Close()
+	}
+}
+
+func main() {
+	logMsg("started")
+	fmt.Println("Select login method:")
+	reader := bufio.NewReader(os.Stdin)
+	logMsg("waiting for selection")
+	sel, err := reader.ReadString('\n')
+	logMsg("selection received: " + sel + " err: " + fmt.Sprint(err))
+
+	fmt.Println("https://accounts.google.com/o/oauth2/auth?state=dummy_state")
+
+	logMsg("waiting for code")
+	code, err := reader.ReadString('\n')
+	logMsg("code received: " + code + " err: " + fmt.Sprint(err))
+
+	logMsg("setting keyring")
+	err = keyring.Set("gemini", "antigravity", ` + "`" + `{"token":{"access_token":"mock-fresh-token"}}` + "`" + `)
+	logMsg("keyring set, err: " + fmt.Sprint(err))
+}
+`
+	srcPath := filepath.Join(tempDir, "main.go")
+	if err := os.WriteFile(srcPath, []byte(mockSource), 0644); err != nil {
+		t.Fatalf("failed to write mock source: %v", err)
+	}
+
+	// 3. Compile mock agy binary
+	mockBinPath := filepath.Join(tempDir, "agy")
+	cmdCompile := exec.Command("go", "build", "-o", mockBinPath, srcPath)
+	if out, err := cmdCompile.CombinedOutput(); err != nil {
+		t.Fatalf("failed to compile mock agy: %v\nOutput: %s", err, out)
+	}
+
+	// 4. Update PATH env to put mock agy at the beginning
+	oldPath := os.Getenv("PATH")
+	os.Setenv("PATH", tempDir+string(os.PathListSeparator)+oldPath)
+	defer os.Setenv("PATH", oldPath)
+
+	os.Setenv("FORCE_DIRECT_AUTH", "true")
+	defer os.Unsetenv("FORCE_DIRECT_AUTH")
+
+	// 5. Initialize auth service
+	appTempDir, err := os.MkdirTemp("", "app-auth-test")
+	if err != nil {
+		t.Fatalf("failed to create temp app dir: %v", err)
+	}
+	defer os.RemoveAll(appTempDir)
+
+	authSvc := auth.NewService(appTempDir)
+
+	// 6. Test StartGoogleAuth
+	url, err := authSvc.StartGoogleAuth(appTempDir)
+	if err != nil {
+		t.Fatalf("StartGoogleAuth failed: %v", err)
+	}
+	if !strings.HasPrefix(url, "https://accounts.google.com/o/oauth2/auth") {
+		t.Errorf("expected oauth URL, got: %s", url)
+	}
+
+	// 7. Test SubmitGoogleAuthCode
+	err = authSvc.SubmitGoogleAuthCode("dummy-code-123")
+	if err != nil {
+		t.Fatalf("SubmitGoogleAuthCode failed: %v", err)
+	}
+
+	// 8. Verify token added to pool
+	pool, err := authSvc.LoadAccountsPool()
+	if err != nil {
+		t.Fatalf("failed to load accounts pool: %v", err)
+	}
+
+	found := false
+	for _, entry := range pool {
+		if entry.KeyringValue == `{"token":{"access_token":"mock-fresh-token"}}` {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected mock token to be present in accounts pool, pool: %+v", pool)
 	}
 }

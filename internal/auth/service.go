@@ -189,7 +189,12 @@ func (s *Service) CheckOAuthTokenExists() bool {
 
 func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	locked := true
+	defer func() {
+		if locked {
+			s.mu.Unlock()
+		}
+	}()
 
 	// Backup current active keyring and dummy token file
 	backupVal, backupErr := keyring.Get("gemini", "antigravity")
@@ -209,8 +214,8 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	var cmd *exec.Cmd
 	useDirect := false
 
-	if _, err := exec.LookPath("script"); err != nil {
-		log.Printf("[AUTH] 'script' utility not found. Using direct command execution.")
+	if _, err := exec.LookPath("script"); err != nil || os.Getenv("FORCE_DIRECT_AUTH") == "true" {
+		log.Printf("[AUTH] 'script' utility not found or forced direct. Using direct command execution.")
 		useDirect = true
 	}
 
@@ -287,6 +292,8 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	s.activeAuthCmd = cmd
 	s.activeAuthStdin = stdinPipe
 	s.activeAuthURL = ""
+	locked = false
+	s.mu.Unlock()
 
 	// Read output in background to fetch login URL and respond to theme prompts
 	go func() {
@@ -315,6 +322,13 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 					strings.Contains(lowerOut, "template") ||
 					strings.Contains(lowerOut, "choose template") ||
 					strings.Contains(lowerOut, "select template") ||
+					strings.Contains(lowerOut, "select project") ||
+					strings.Contains(lowerOut, "select a project") ||
+					strings.Contains(lowerOut, "choose project") ||
+					strings.Contains(lowerOut, "gcp project") ||
+					strings.Contains(lowerOut, "google cloud project") ||
+					strings.Contains(lowerOut, "project id") ||
+					strings.Contains(lowerOut, "which project") ||
 					strings.Contains(lowerOut, "[y/n]") ||
 					strings.Contains(lowerOut, "[yes/no]") {
 					log.Printf("[AUTH] Interactive prompt detected. Sending '\\n' to accept default...")
