@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.2.9</span>
+                    <span class="text-[10px] text-slate-400">v1.3.0</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1757,10 +1757,10 @@
         async function addNewAccount() {
             if (confirm("Njenengan bakal metu saka akun iki lan mlebu nganggo akun Google anyar. Lanjut?")) {
                 try {
-                    await fetch('/api/auth/logout', { method: 'POST' });
+                    await fetch('/api/auth/google/clear', { method: 'POST' });
                     window.location.href = '/login';
                 } catch (err) {
-                    console.error("Gagal logout:", err);
+                    console.error("Gagal ngresiki otentikasi Google:", err);
                 }
             }
         }
@@ -1790,7 +1790,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.2.9";
+                const current = "v1.3.0";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1806,7 +1806,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.2.9).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.0).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1903,7 +1903,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.2.9</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.0</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

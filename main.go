@@ -51,6 +51,7 @@ func main() {
 	http.HandleFunc("/api/auth/start", h.AuthMiddleware(h.HandleAuthStart))
 	http.HandleFunc("/api/auth/submit", h.AuthMiddleware(h.HandleAuthSubmit))
 	http.HandleFunc("/api/auth/logout", h.AuthMiddleware(h.HandleLogout))
+	http.HandleFunc("/api/auth/google/clear", h.AuthMiddleware(h.HandleClearGoogleAuth))
 	http.HandleFunc("/api/auth/status", h.AuthMiddleware(h.HandleAuthStatus))
 	http.HandleFunc("/api/auth/pwd", h.AuthMiddleware(h.HandlePasswordAuth))
 	http.HandleFunc("/api/auth/pool", h.AuthMiddleware(h.HandleGetAccountsPool))

@@ -111,6 +111,14 @@
             </form>
         </div>
 
+        <!-- Account Pool (Switch to Existing Account) -->
+        <div id="login-pool-container" class="mt-6 pt-6 border-t border-brand-border/60 hidden space-y-3">
+            <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider text-center">Utawi Gunakake Akun sing Wis Ana:</div>
+            <div id="login-pool-list" class="space-y-2 max-h-[150px] overflow-y-auto pr-1">
+                <!-- Accounts pool list -->
+            </div>
+        </div>
+
         <!-- Error Banner -->
         <div id="error-banner" class="hidden mt-6 flex items-center space-x-2 bg-red-950/50 border border-red-500/30 text-red-200 p-3 rounded-lg text-xs">
             <i data-lucide="alert-circle" class="w-4 h-4 shrink-0 text-red-400"></i>
@@ -209,8 +217,70 @@
             }
         }
 
+        async function loadPoolOnLogin() {
+            const container = document.getElementById('login-pool-container');
+            const list = document.getElementById('login-pool-list');
+            if (!container || !list) return;
+
+            try {
+                const res = await fetch('/api/auth/pool');
+                if (res.ok) {
+                    const data = await res.json();
+                    const accounts = data.accounts || [];
+                    if (accounts.length > 0) {
+                        container.classList.remove('hidden');
+                        let html = '';
+                        accounts.forEach(acc => {
+                            html += `
+                                <div class="flex items-center justify-between p-2.5 bg-brand-panel/85 hover:bg-brand-border border border-brand-border rounded-xl text-xs transition duration-200">
+                                    <div class="flex items-center space-x-2 truncate max-w-[220px]">
+                                        <div class="w-1.5 h-1.5 rounded-full bg-slate-500"></div>
+                                        <span class="font-mono text-slate-200 truncate" title="${escapeHtml(acc)}">${escapeHtml(acc)}</span>
+                                    </div>
+                                    <button onclick="switchAccountOnLogin('${escapeHtml(acc)}')" class="py-1 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-[10px] font-semibold transition">
+                                        Pilih
+                                    </button>
+                                </div>
+                            `;
+                        });
+                        list.innerHTML = html;
+                    }
+                }
+            } catch (err) {
+                console.error("Gagal ngambil pool akun:", err);
+            }
+        }
+
+        async function switchAccountOnLogin(email) {
+            try {
+                const res = await fetch('/api/auth/pool/switch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+                if (res.ok) {
+                    window.location.href = '/';
+                } else {
+                    alert("Gagal ngalihake akun");
+                }
+            } catch (err) {
+                console.error("Gagal switch account:", err);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
         // Check authentication status on load
         window.addEventListener('DOMContentLoaded', async () => {
+            loadPoolOnLogin();
             try {
                 const res = await fetch('/api/auth/status');
                 if (res.ok) {

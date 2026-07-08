@@ -18,8 +18,8 @@ import (
 	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.2.9"
-var versionRegex = regexp.MustCompile(`v1\.2\.[0-9]+`)
+const AppVersion = "v1.3.0"
+var versionRegex = regexp.MustCompile(`v[0-9]+\.[0-9]+\.[0-9]+`)
 
 type EmbeddedHTML struct {
 	IndexHTML    string
@@ -859,4 +859,11 @@ func (h *Handler) HandleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Sukses mbusak akun"))
+}
+
+// HandleClearGoogleAuth clears Google OAuth authentication only, leaving IDE session active
+func (h *Handler) HandleClearGoogleAuth(w http.ResponseWriter, r *http.Request) {
+	h.authSvc.Logout()
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Sukses ngresiki Google auth"))
 }
