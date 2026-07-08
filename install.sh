@@ -1,17 +1,32 @@
 #!/bin/bash
 set -e
 
+resolve_latest_version() {
+    local tags testing_tag latest_tag
+    tags=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=100" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || true)
+    if [ -n "$tags" ]; then
+        # Testing release dadi channel default supaya user v1.3.5/bawah iso langsung naik ke versi testing paling anyar.
+        testing_tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.testing\.[0-9]+$' | sort -V | tail -n 1 || true)
+        if [ -n "$testing_tag" ]; then
+            echo "$testing_tag"
+            return
+        fi
+        latest_tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1 || true)
+        if [ -n "$latest_tag" ]; then
+            echo "$latest_tag"
+            return
+        fi
+        printf '%s\n' "$tags" | head -n 1
+        return
+    fi
+    echo "v1.3.testing.4"
+}
+
 REQUESTED_VERSION="${1:-${VERSION:-}}"
 if [ -n "$REQUESTED_VERSION" ] && [ "$REQUESTED_VERSION" != "latest" ]; then
     VERSION="$REQUESTED_VERSION"
 else
-    # Golek versi paling anyar saka GitHub Releases
-    LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases" 2>/dev/null | grep -m 1 '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || echo "")
-    if [ -n "$LATEST_TAG" ]; then
-        VERSION="$LATEST_TAG"
-    else
-        VERSION="v1.3.testing.3" # Fallback
-    fi
+    VERSION=$(resolve_latest_version)
 fi
 
 # Tampilan header
@@ -25,6 +40,24 @@ echo "Mulai ngundhuh pre-compiled binary saka GitHub..."
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 BINARY_NAME="mobile-agy"
+
+mobile_agy_pids() {
+    # Aja nganggo `pkill -f mobile-agy` amarga iso mateni wrapper `agy-mobile update` dhewe.
+    pgrep -x mobile-agy 2>/dev/null || true
+    pgrep -x mobile-agy.exe 2>/dev/null || true
+}
+
+mobile_agy_running() {
+    [ -n "$(mobile_agy_pids)" ]
+}
+
+stop_mobile_agy() {
+    local pids
+    pids=$(mobile_agy_pids)
+    if [ -n "$pids" ]; then
+        kill $pids 2>/dev/null || true
+    fi
+}
 
 case "$OS" in
     linux)
@@ -122,10 +155,27 @@ EOT
 
 INSTALL_DIR="$ABS_INSTALL_DIR"
 
+mobile_agy_pids() {
+    pgrep -x mobile-agy 2>/dev/null || true
+    pgrep -x mobile-agy.exe 2>/dev/null || true
+}
+
+mobile_agy_running() {
+    [ -n "\$(mobile_agy_pids)" ]
+}
+
+stop_mobile_agy() {
+    local pids
+    pids=\$(mobile_agy_pids)
+    if [ -n "\$pids" ]; then
+        kill \$pids 2>/dev/null || true
+    fi
+}
+
 case "\$1" in
     start)
         echo "Starting Mobile IDE..."
-        if pgrep -f "mobile-agy" > /dev/null; then
+        if mobile_agy_running; then
             echo "Mobile IDE is already running."
         else
             cd "\$INSTALL_DIR"
@@ -135,7 +185,7 @@ case "\$1" in
                 nohup ./start.sh > server.log 2>&1 &
             fi
             sleep 2
-            if pgrep -f "mobile-agy" > /dev/null; then
+            if mobile_agy_running; then
                 echo "Mobile IDE started successfully."
             else
                 echo "Failed to start Mobile IDE. Check \$INSTALL_DIR/server.log for errors."
@@ -144,12 +194,12 @@ case "\$1" in
         ;;
     stop)
         echo "Stopping Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
+        stop_mobile_agy
         echo "Mobile IDE stopped."
         ;;
     restart)
         echo "Restarting Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
+        stop_mobile_agy
         sleep 1
         cd "\$INSTALL_DIR"
         if command -v setsid &>/dev/null; then
@@ -161,7 +211,7 @@ case "\$1" in
         echo "Mobile IDE restarted."
         ;;
     status)
-        PID=\$(pgrep -f "mobile-agy" || true)
+        PID=\$(mobile_agy_pids)
         if [ -n "\$PID" ]; then
             echo "========================================="
             echo "        Mobile IDE Status: RUNNING       "
@@ -211,7 +261,7 @@ case "\$1" in
     install-version)
         if [ -z "\$2" ]; then
             echo "Usage: agy-mobile install-version <tag>"
-            echo "Example: agy-mobile install-version v1.3.testing.3"
+            echo "Example: agy-mobile install-version v1.3.testing.4"
             exit 1
         fi
         TARGET_VERSION="\$2"
@@ -225,7 +275,7 @@ case "\$1" in
         ;;
     uninstall)
         echo "Stopping Mobile IDE..."
-        pkill -f mobile-agy 2>/dev/null || true
+        stop_mobile_agy
         CURRENT_AGY_MOBILE_PATH=\$(which agy-mobile 2>/dev/null || echo "")
         if [ -n "\$CURRENT_AGY_MOBILE_PATH" ] && [ -w "\$CURRENT_AGY_MOBILE_PATH" ]; then
             rm -f "\$CURRENT_AGY_MOBILE_PATH"
@@ -294,8 +344,8 @@ else
     # Pindhah binary anyar menyang panggonan utama
     mv -f "$TEMP_BINARY" "$BINARY_NAME"
 
-    # Mandhegake proses lawas sing saiki mlaku minangka .old
-    pkill -f mobile-agy 2>/dev/null || true
+    # Mandhegake proses lawas sing saiki mlaku minangka .old tanpa mateni wrapper `agy-mobile update`.
+    stop_mobile_agy
     sleep 0.2
 
     # Hapus file .old (bakal dibusak sakwise proses lawas mati)
@@ -416,11 +466,11 @@ sleep 2
 # Cek apa process isih mlaku
 SERVER_RUNNING=false
 if [[ "$BINARY_NAME" == *.exe ]]; then
-    if ps -ef | grep mobile-agy.exe | grep -v grep > /dev/null; then
+    if pgrep -x mobile-agy.exe > /dev/null 2>&1; then
         SERVER_RUNNING=true
     fi
 else
-    if ps -ef | grep mobile-agy | grep -v grep > /dev/null; then
+    if pgrep -x mobile-agy > /dev/null 2>&1; then
         SERVER_RUNNING=true
     fi
 fi

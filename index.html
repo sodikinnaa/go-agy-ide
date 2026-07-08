@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.3.testing.3</span>
+                    <span class="text-[10px] text-slate-400">v1.3.testing.4</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1969,13 +1969,28 @@
                 const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30');
                 if (!res.ok) throw new Error();
                 const releases = await res.json();
-                const latest = releases?.[0]?.tag_name || 'latest';
-                const current = "v1.3.testing.3";
+                const tagRank = tag => (tag.match(/\d+|[a-zA-Z]+/g) || []).map(part => /^\d+$/.test(part) ? Number(part) : part);
+                const compareTags = (a, b) => {
+                    const aa = tagRank(a);
+                    const bb = tagRank(b);
+                    for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
+                        const x = aa[i] ?? 0;
+                        const y = bb[i] ?? 0;
+                        if (typeof x === 'number' && typeof y === 'number' && x !== y) return x - y;
+                        const sx = String(x), sy = String(y);
+                        if (sx !== sy) return sx.localeCompare(sy);
+                    }
+                    return 0;
+                };
+                const testingTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+\.\d+\.testing\.\d+$/.test(tag || ''));
+                const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
+                const latest = (testingTags.sort(compareTags).pop() || stableTags.sort(compareTags).pop() || releases?.[0]?.tag_name || 'latest');
+                const current = "v1.3.testing.4";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
-                    releaseSelect.innerHTML = '<option value="latest">latest (rilis paling anyar)</option>';
-                    releases.forEach(rel => {
+                    releaseSelect.innerHTML = `<option value="latest">latest (${latest})</option>`;
+                    [...releases].sort((a, b) => compareTags(b.tag_name || '', a.tag_name || '')).forEach(rel => {
                         if (!rel.tag_name) return;
                         const opt = document.createElement('option');
                         opt.value = rel.tag_name;
@@ -1995,7 +2010,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.3). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.4). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
                 }
                 if (updateInst) updateInst.classList.remove('hidden');
             } catch (err) {
@@ -2098,7 +2113,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.3</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.4</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
