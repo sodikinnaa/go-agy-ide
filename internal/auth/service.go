@@ -164,70 +164,23 @@ func (s *Service) CheckOAuthTokenExists() bool {
 		return false
 	}
 
-	agyPath := FindAgyPath()
-	var runErr error
-	useDirect := false
-
-	if _, err := exec.LookPath("script"); err != nil {
-		useDirect = true
-	}
-
-	if useDirect {
-		cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
-		cmdDirect.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
-		doneDirect := make(chan error, 1)
-		go func() {
-			doneDirect <- cmdDirect.Run()
-		}()
-		select {
-		case runErr = <-doneDirect:
-		case <-time.After(8 * time.Second):
-			if cmdDirect.Process != nil {
-				_ = cmdDirect.Process.Kill()
-			}
-			runErr = fmt.Errorf("timeout")
-		}
-	} else {
-		cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
-		cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
-		cmd.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
-		done := make(chan error, 1)
-		go func() {
-			done <- cmd.Run()
-		}()
-		select {
-		case runErr = <-done:
-		case <-time.After(8 * time.Second):
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-			}
-			runErr = fmt.Errorf("timeout")
-		}
-
-		if runErr != nil {
-			log.Printf("[AUTH] CheckOAuthTokenExists: 'script' failed with error: %v. Retrying by running agy directly...", runErr)
-			cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
-			cmdDirect.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
-			doneDirect := make(chan error, 1)
-			go func() {
-				doneDirect <- cmdDirect.Run()
-			}()
-			select {
-			case runErr = <-doneDirect:
-			case <-time.After(8 * time.Second):
-				if cmdDirect.Process != nil {
-					_ = cmdDirect.Process.Kill()
-				}
-				runErr = fmt.Errorf("timeout")
-			}
-		}
-	}
-
-	if runErr == nil {
-		tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
-		_ = os.MkdirAll(tokenDir, 0755)
+	// 1. Check active keyring slot
+	val, err := keyring.Get("gemini", "antigravity")
+	if err == nil && val != "" {
+		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
 		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
-		log.Printf("[AUTH] Nemokake sesi keychain sing wis ana. Nggawe file dummy token.")
+		log.Printf("[AUTH] Active credentials found in keyring. Restored dummy token file.")
+		return true
+	}
+
+	// 2. Check pool fallback
+	pool, err := s.LoadAccountsPool()
+	if err == nil && len(pool) > 0 {
+		// If we have accounts in the pool, restore the first one to the active slot
+		_ = keyring.Set("gemini", "antigravity", pool[0].KeyringValue)
+		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		log.Printf("[AUTH] Keyring was empty but pool has credentials. Restored first account from pool.")
 		return true
 	}
 
