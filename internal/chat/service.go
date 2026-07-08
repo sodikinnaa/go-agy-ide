@@ -44,6 +44,11 @@ type ChatMessage struct {
 	Timestamp string `json:"timestamp"`
 }
 
+type openAIMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ChatHistoryDetail struct {
 	ID       string        `json:"id"`
 	Messages []ChatMessage `json:"messages"`
@@ -460,7 +465,109 @@ func (s *Service) appendToTranscript(convID string, line TranscriptLine) error {
 	return err
 }
 
-// StartOpenAIChat handles streaming OpenAI compatible completions
+func agyCompatibilitySystemPrompt(activeWorkspaceDir string) string {
+	var sb strings.Builder
+	sb.WriteString("You are Mobile AGY running in OpenAI-compatible fallback mode. ")
+	sb.WriteString("The user selected an external OpenAI-compatible model because the original Antigravity quota may be exhausted, but they still expect the AGY coding-assistant behavior.\n\n")
+	sb.WriteString("Follow the original AGY style and workflow as closely as possible:\n")
+	sb.WriteString("- Act as a senior autonomous coding agent inside the user's workspace.\n")
+	sb.WriteString("- Be concise, direct, and technically accurate.\n")
+	sb.WriteString("- Use the provided workspace path, file snapshot, and conversation transcript as your working context.\n")
+	sb.WriteString("- Prefer root-cause fixes, minimal focused changes, and existing project patterns.\n")
+	sb.WriteString("- If the user asks for code, provide complete practical code or exact file-level guidance.\n")
+	sb.WriteString("- Do not pretend you executed terminal commands, read files, edited files, or used AGY tools unless that evidence is explicitly present in the conversation.\n")
+	sb.WriteString("- If a task needs real filesystem/tool execution that the OpenAI-compatible API cannot perform directly, say what should be run or changed instead of fabricating results.\n")
+	sb.WriteString("- Preserve Indonesian/Javanese tone when the user uses it.\n\n")
+	sb.WriteString("Active workspace: ")
+	sb.WriteString(activeWorkspaceDir)
+	return sb.String()
+}
+
+func buildWorkspaceSnapshot(activeWorkspaceDir string) string {
+	if strings.TrimSpace(activeWorkspaceDir) == "" {
+		return "Workspace snapshot unavailable: active workspace is empty."
+	}
+
+	info, err := os.Stat(activeWorkspaceDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Sprintf("Workspace snapshot unavailable for %q: %v", activeWorkspaceDir, err)
+	}
+
+	skippedDirs := map[string]bool{
+		".git": true, ".zed": true, "node_modules": true, "vendor": true, "dist": true, "build": true,
+		".next": true, ".nuxt": true, "coverage": true, "tmp": true, "temp": true,
+	}
+	const maxFiles = 160
+	var files []string
+
+	_ = filepath.WalkDir(activeWorkspaceDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if path != activeWorkspaceDir && skippedDirs[name] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".dll") || strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".zip") {
+			return nil
+		}
+		rel, relErr := filepath.Rel(activeWorkspaceDir, path)
+		if relErr == nil {
+			files = append(files, filepath.ToSlash(rel))
+		}
+		if len(files) >= maxFiles {
+			return io.EOF
+		}
+		return nil
+	})
+
+	if len(files) == 0 {
+		return "Workspace snapshot: no visible source files found."
+	}
+	return "Workspace file snapshot (read-only context, first files only):\n- " + strings.Join(files, "\n- ")
+}
+
+func (s *Service) getOpenAITranscriptMessages(convID string) []openAIMessage {
+	homeDir, err := getHomeDir()
+	if err != nil || strings.TrimSpace(convID) == "" {
+		return nil
+	}
+
+	id := filepath.Base(convID)
+	transcriptPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", id, ".system_generated", "logs", "transcript.jsonl")
+	file, err := os.Open(transcriptPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var messages []openAIMessage
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for scanner.Scan() {
+		var line TranscriptLine
+		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
+			continue
+		}
+		content := strings.TrimSpace(line.Content)
+		if content == "" {
+			continue
+		}
+		switch line.Type {
+		case "USER_INPUT":
+			messages = append(messages, openAIMessage{Role: "user", Content: content})
+		case "PLANNER_RESPONSE":
+			messages = append(messages, openAIMessage{Role: "assistant", Content: content})
+		}
+	}
+	return messages
+}
+
+// StartOpenAIChat handles streaming OpenAI compatible completions through the
+// same Antigravity brain/history layout, with an AGY-compatible system prompt.
 func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeWorkspaceDir string) (io.ReadCloser, error) {
 	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
@@ -490,77 +597,47 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 		})
 	}
 
-	// 2. Load context history
-	type OpenAIMessage struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
+	// 2. Load AGY-compatible context and raw transcript history.
+	type openAIChunk struct {
+		Choices []struct {
+			Delta struct {
+				Content          string `json:"content"`
+				ReasoningContent string `json:"reasoning_content"`
+			} `json:"delta"`
+			FinishReason *string `json:"finish_reason"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error"`
 	}
-	var messages []OpenAIMessage
-	detail, err := s.GetHistoryDetail(req.Conversation)
-	if err == nil {
-		for _, msg := range detail.Messages {
-			role := msg.Role
-			if role == "model" {
-				role = "assistant"
-			}
-			messages = append(messages, OpenAIMessage{
-				Role:    role,
-				Content: msg.Content,
-			})
-		}
-	}
-	// Append current prompt
-	messages = append(messages, OpenAIMessage{
-		Role:    "user",
-		Content: req.Prompt,
-	})
 
-	// 3. Prepare OpenAI request
-	reqBody, err := json.Marshal(map[string]any{
-		"model":    modelName,
-		"messages": messages,
-		"stream":   true,
-	})
-	if err != nil {
-		return nil, err
+	messages := []openAIMessage{
+		{Role: "system", Content: agyCompatibilitySystemPrompt(activeWorkspaceDir)},
+		{Role: "system", Content: buildWorkspaceSnapshot(activeWorkspaceDir)},
 	}
+	messages = append(messages, s.getOpenAITranscriptMessages(req.Conversation)...)
+	messages = append(messages, openAIMessage{Role: "user", Content: req.Prompt})
 
 	openaiCtx, cancel := context.WithCancel(ctx)
 	s.mu.Lock()
 	s.activeChatCancels[req.Conversation] = cancel
 	s.mu.Unlock()
 
-	url := strings.TrimSuffix(apiBase, "/") + "/chat/completions"
-	httpReq, err := http.NewRequestWithContext(openaiCtx, "POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		cancel()
-		return nil, err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		cancel()
-		return nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
-	}
-
 	pr, pw := io.Pipe()
+	client := &http.Client{}
+	url := strings.TrimSuffix(apiBase, "/") + "/chat/completions"
 
 	go func() {
-		defer resp.Body.Close()
-		defer pw.Close()
 		defer cancel()
+		defer func() {
+			s.mu.Lock()
+			delete(s.activeChatCancels, req.Conversation)
+			s.mu.Unlock()
+		}()
+		defer pw.Close()
 
-		// Append the user query to transcript log immediately
+		// Append the user query to transcript log immediately.
 		_ = s.appendToTranscript(req.Conversation, TranscriptLine{
 			Source:    "user",
 			Type:      "USER_INPUT",
@@ -568,32 +645,92 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
 		})
 
+		maxContinuations := 6
+		if raw := strings.TrimSpace(os.Getenv("OPENAI_MAX_CONTINUATIONS")); raw != "" {
+			var parsed int
+			if _, err := fmt.Sscanf(raw, "%d", &parsed); err == nil && parsed >= 0 {
+				maxContinuations = parsed
+			}
+		}
+
 		var accumulatedContent strings.Builder
 		var accumulatedThinking strings.Builder
 		startedThought := false
 
-		scanner := bufio.NewScanner(resp.Body)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if !strings.HasPrefix(line, "data:") {
-				continue
-			}
-			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if data == "[DONE]" {
-				break
+		writeError := func(format string, args ...any) {
+			_, _ = pw.Write([]byte("\n\n[OpenAI-compatible error] " + fmt.Sprintf(format, args...) + "\n"))
+		}
+
+		for requestNo := 0; requestNo <= maxContinuations; requestNo++ {
+			reqBody, err := json.Marshal(map[string]any{
+				"model":    modelName,
+				"messages": messages,
+				"stream":   true,
+			})
+			if err != nil {
+				writeError("gagal nggawe request: %v", err)
+				return
 			}
 
-			var chunk struct {
-				Choices []struct {
-					Delta struct {
-						Content          string `json:"content"`
-						ReasoningContent string `json:"reasoning_content"`
-					} `json:"delta"`
-				} `json:"choices"`
+			httpReq, err := http.NewRequestWithContext(openaiCtx, http.MethodPost, url, bytes.NewReader(reqBody))
+			if err != nil {
+				writeError("gagal nggawe HTTP request: %v", err)
+				return
 			}
-			if err := json.Unmarshal([]byte(data), &chunk); err == nil && len(chunk.Choices) > 0 {
-				rc := chunk.Choices[0].Delta.ReasoningContent
-				c := chunk.Choices[0].Delta.Content
+			httpReq.Header.Set("Content-Type", "application/json")
+			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+			resp, err := client.Do(httpReq)
+			if err != nil {
+				if openaiCtx.Err() != nil {
+					return
+				}
+				writeError("request gagal: %v", err)
+				return
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				_ = resp.Body.Close()
+				writeError("API status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
+				return
+			}
+
+			var partContent strings.Builder
+			var finishReason string
+			scanner := bufio.NewScanner(resp.Body)
+			scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+
+			for scanner.Scan() {
+				line := scanner.Text()
+				if !strings.HasPrefix(line, "data:") {
+					continue
+				}
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data == "[DONE]" {
+					break
+				}
+
+				var chunk openAIChunk
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					continue
+				}
+				if chunk.Error != nil && chunk.Error.Message != "" {
+					_ = resp.Body.Close()
+					writeError("%s", chunk.Error.Message)
+					return
+				}
+				if len(chunk.Choices) == 0 {
+					continue
+				}
+
+				choice := chunk.Choices[0]
+				if choice.FinishReason != nil {
+					finishReason = *choice.FinishReason
+				}
+
+				rc := choice.Delta.ReasoningContent
+				c := choice.Delta.Content
 
 				if rc != "" {
 					if !startedThought {
@@ -612,17 +749,46 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 						_, _ = pw.Write([]byte("\n"))
 						startedThought = false
 					}
+					partContent.WriteString(c)
 					accumulatedContent.WriteString(c)
 					_, _ = pw.Write([]byte(c))
 				}
 			}
+
+			scanErr := scanner.Err()
+			_ = resp.Body.Close()
+			if scanErr != nil {
+				if openaiCtx.Err() != nil {
+					return
+				}
+				writeError("stream kepotong: %v", scanErr)
+				return
+			}
+
+			shouldContinue := finishReason == "length" || finishReason == "max_tokens"
+			if !shouldContinue {
+				break
+			}
+			if requestNo == maxContinuations {
+				_, _ = pw.Write([]byte("\n\n[OpenAI-compatible warning] Jawaban isih kena limit token. Naikkan OPENAI_MAX_CONTINUATIONS yen pengin auto-lanjut luwih dawa.\n"))
+				break
+			}
+
+			partial := strings.TrimSpace(partContent.String())
+			if partial == "" {
+				break
+			}
+			messages = append(messages,
+				openAIMessage{Role: "assistant", Content: partial},
+				openAIMessage{Role: "user", Content: "Continue exactly where you left off. Do not repeat previous text. Continue until the answer is complete."},
+			)
 		}
 
 		if startedThought {
 			_, _ = pw.Write([]byte("\n"))
 		}
 
-		// Write the completed response to transcript log
+		// Write the completed multi-request response to transcript log once.
 		_ = s.appendToTranscript(req.Conversation, TranscriptLine{
 			Source:    "model",
 			Type:      "PLANNER_RESPONSE",
