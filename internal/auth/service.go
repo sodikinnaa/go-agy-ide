@@ -174,6 +174,7 @@ func (s *Service) CheckOAuthTokenExists() bool {
 
 	if useDirect {
 		cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+		cmdDirect.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
 		doneDirect := make(chan error, 1)
 		go func() {
 			doneDirect <- cmdDirect.Run()
@@ -189,6 +190,7 @@ func (s *Service) CheckOAuthTokenExists() bool {
 	} else {
 		cmdStr := fmt.Sprintf("%s --print hello --dangerously-skip-permissions", agyPath)
 		cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+		cmd.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
 		done := make(chan error, 1)
 		go func() {
 			done <- cmd.Run()
@@ -205,6 +207,7 @@ func (s *Service) CheckOAuthTokenExists() bool {
 		if runErr != nil {
 			log.Printf("[AUTH] CheckOAuthTokenExists: 'script' failed with error: %v. Retrying by running agy directly...", runErr)
 			cmdDirect := exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
+			cmdDirect.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
 			doneDirect := make(chan error, 1)
 			go func() {
 				doneDirect <- cmdDirect.Run()
@@ -265,7 +268,7 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 		cmd = exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
 	}
 	cmd.Dir = activeWorkspaceDir
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
@@ -294,7 +297,7 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 			log.Printf("[AUTH] Retrying StartGoogleAuth using direct execution fallback...")
 			cmd = exec.Command(agyPath, "--print", "hello", "--dangerously-skip-permissions")
 			cmd.Dir = activeWorkspaceDir
-			cmd.Env = os.Environ()
+			cmd.Env = append(os.Environ(), "DISPLAY=", "BROWSER=false")
 			stdinPipe, err = cmd.StdinPipe()
 			if err != nil {
 				if backupErr == nil && backupVal != "" {

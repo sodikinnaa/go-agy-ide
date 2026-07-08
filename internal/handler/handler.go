@@ -18,7 +18,7 @@ import (
 	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.3.2"
+const AppVersion = "v1.3.3"
 var versionRegex = regexp.MustCompile(`v[0-9]+\.[0-9]+\.[0-9]+`)
 
 type EmbeddedHTML struct {
