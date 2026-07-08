@@ -13,6 +13,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -44,9 +47,22 @@ type ChatMessage struct {
 	Timestamp string `json:"timestamp"`
 }
 
+type openAIFunctionCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
+type openAIToolCall struct {
+	ID       string             `json:"id,omitempty"`
+	Type     string             `json:"type,omitempty"`
+	Function openAIFunctionCall `json:"function"`
+}
+
 type openAIMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string           `json:"role"`
+	Content    string           `json:"content,omitempty"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
 }
 
 type ChatHistoryDetail struct {
@@ -530,6 +546,411 @@ func buildWorkspaceSnapshot(activeWorkspaceDir string) string {
 	return "Workspace file snapshot (read-only context, first files only):\n- " + strings.Join(files, "\n- ")
 }
 
+func cleanWorkspaceRelPath(pathParam string) string {
+	pathParam = strings.TrimSpace(pathParam)
+	pathParam = strings.Trim(pathParam, "\"'")
+	pathParam = strings.ReplaceAll(pathParam, "\\", string(filepath.Separator))
+	if filepath.IsAbs(pathParam) {
+		return pathParam
+	}
+	return filepath.Clean(pathParam)
+}
+
+func resolveWorkspacePath(activeWorkspaceDir, pathParam string) (string, string, error) {
+	if strings.TrimSpace(pathParam) == "" || pathParam == "." {
+		return activeWorkspaceDir, ".", nil
+	}
+	cleaned := cleanWorkspaceRelPath(pathParam)
+	var absPath string
+	if filepath.IsAbs(cleaned) {
+		absPath = filepath.Clean(cleaned)
+	} else {
+		absPath = filepath.Join(activeWorkspaceDir, cleaned)
+	}
+	activeClean := filepath.Clean(activeWorkspaceDir)
+	if absPath != activeClean && !strings.HasPrefix(absPath, activeClean+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("Access Denied: path must stay inside workspace")
+	}
+	rel, err := filepath.Rel(activeClean, absPath)
+	if err != nil {
+		return "", "", err
+	}
+	return absPath, filepath.ToSlash(rel), nil
+}
+
+func openAIToolDefinitions() []map[string]any {
+	return []map[string]any{
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "list_dir",
+				"description": "List files and folders inside the active workspace, similar to AGY list_dir.",
+				"parameters": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"path": map[string]any{"type": "string", "description": "Workspace-relative directory path. Use . for root."},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "view_file",
+				"description": "Read a text file from the active workspace, similar to AGY view_file.",
+				"parameters": map[string]any{
+					"type":     "object",
+					"required": []string{"path"},
+					"properties": map[string]any{
+						"path":       map[string]any{"type": "string", "description": "Workspace-relative file path."},
+						"start_line": map[string]any{"type": "integer", "description": "Optional 1-based start line."},
+						"end_line":   map[string]any{"type": "integer", "description": "Optional 1-based end line."},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "write_to_file",
+				"description": "Create or overwrite a file inside the active workspace.",
+				"parameters": map[string]any{
+					"type":     "object",
+					"required": []string{"path", "content"},
+					"properties": map[string]any{
+						"path":    map[string]any{"type": "string", "description": "Workspace-relative file path."},
+						"content": map[string]any{"type": "string", "description": "Full new file content."},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "replace_file_content",
+				"description": "Replace exact text inside a workspace file. Prefer this for focused edits.",
+				"parameters": map[string]any{
+					"type":     "object",
+					"required": []string{"path", "old_text", "new_text"},
+					"properties": map[string]any{
+						"path":     map[string]any{"type": "string", "description": "Workspace-relative file path."},
+						"old_text": map[string]any{"type": "string", "description": "Exact text to replace."},
+						"new_text": map[string]any{"type": "string", "description": "Replacement text."},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "grep_search",
+				"description": "Search text files in the active workspace using a regular expression.",
+				"parameters": map[string]any{
+					"type":     "object",
+					"required": []string{"pattern"},
+					"properties": map[string]any{
+						"pattern": map[string]any{"type": "string", "description": "Go regexp pattern."},
+						"path":    map[string]any{"type": "string", "description": "Optional workspace-relative subtree."},
+					},
+				},
+			},
+		},
+		{
+			"type": "function",
+			"function": map[string]any{
+				"name":        "run_command",
+				"description": "Run a short non-interactive command in the active workspace. Use mainly for tests, builds, and git read-only checks.",
+				"parameters": map[string]any{
+					"type":     "object",
+					"required": []string{"command"},
+					"properties": map[string]any{
+						"command": map[string]any{"type": "string", "description": "Command to run."},
+					},
+				},
+			},
+		},
+	}
+}
+
+func agyToolType(name string) string {
+	switch name {
+	case "list_dir":
+		return "LIST_DIRECTORY"
+	case "view_file":
+		return "VIEW_FILE"
+	case "write_to_file", "replace_file_content":
+		return "WRITE_FILE"
+	case "grep_search":
+		return "GREP_SEARCH"
+	case "run_command":
+		return "COMMAND"
+	default:
+		return "TOOL_RESULT"
+	}
+}
+
+func formatToolResult(name, body string, started time.Time) string {
+	return fmt.Sprintf("Created At: %s\nCompleted At: %s\n%s", started.Format("2006-01-02T15:04:05Z07:00"), time.Now().Format("2006-01-02T15:04:05Z07:00"), body)
+}
+
+func (s *Service) executeOpenAITool(ctx context.Context, activeWorkspaceDir string, call openAIToolCall) (string, ToolCall) {
+	name := call.Function.Name
+	started := time.Now()
+	var args map[string]any
+	if err := json.Unmarshal([]byte(call.Function.Arguments), &args); err != nil {
+		result := formatToolResult(name, "Error: invalid tool arguments: "+err.Error(), started)
+		return result, ToolCall{Name: name, ToolAction: "Invalid arguments", ToolSummary: "Tool failed", Arguments: call.Function.Arguments}
+	}
+
+	toolCall := ToolCall{Name: name, ToolAction: "Executing " + name, ToolSummary: "OpenAI-compatible tool call", Arguments: args}
+	resultBody := ""
+	fail := func(err error) string {
+		return "Error: " + err.Error()
+	}
+	argString := func(key string) string {
+		if v, ok := args[key].(string); ok {
+			return v
+		}
+		return ""
+	}
+	argInt := func(key string) int {
+		switch v := args[key].(type) {
+		case float64:
+			return int(v)
+		case int:
+			return v
+		default:
+			return 0
+		}
+	}
+
+	switch name {
+	case "list_dir":
+		pathArg := argString("path")
+		if pathArg == "" {
+			pathArg = "."
+		}
+		absPath, _, err := resolveWorkspacePath(activeWorkspaceDir, pathArg)
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		entries, err := os.ReadDir(absPath)
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].IsDir() != entries[j].IsDir() {
+				return entries[i].IsDir()
+			}
+			return strings.ToLower(entries[i].Name()) < strings.ToLower(entries[j].Name())
+		})
+		var sb strings.Builder
+		dirs, files := 0, 0
+		for i, entry := range entries {
+			if i >= 200 {
+				sb.WriteString("... truncated after 200 entries\n")
+				break
+			}
+			info, _ := entry.Info()
+			if entry.IsDir() {
+				dirs++
+				sb.WriteString(fmt.Sprintf("{\"name\":%q, \"type\":\"directory\"}\n", entry.Name()))
+			} else {
+				files++
+				size := int64(0)
+				if info != nil {
+					size = info.Size()
+				}
+				sb.WriteString(fmt.Sprintf("{\"name\":%q, \"sizeBytes\":%q}\n", entry.Name(), fmt.Sprintf("%d", size)))
+			}
+		}
+		sb.WriteString(fmt.Sprintf("\nSummary: This directory contains %d subdirectories and %d files.", dirs, files))
+		resultBody = sb.String()
+
+	case "view_file":
+		absPath, rel, err := resolveWorkspacePath(activeWorkspaceDir, argString("path"))
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		content := string(data)
+		lines := strings.Split(content, "\n")
+		startLine := argInt("start_line")
+		endLine := argInt("end_line")
+		if startLine <= 0 {
+			startLine = 1
+		}
+		if endLine <= 0 || endLine > len(lines) {
+			endLine = len(lines)
+		}
+		if startLine > endLine {
+			resultBody = fmt.Sprintf("File: %s\n(no lines in requested range)", rel)
+			break
+		}
+		var sb strings.Builder
+		sb.WriteString("File: " + rel + "\n")
+		for i := startLine; i <= endLine && i <= startLine+399; i++ {
+			sb.WriteString(fmt.Sprintf("%6d\t%s\n", i, lines[i-1]))
+		}
+		if endLine-startLine >= 400 {
+			sb.WriteString("... truncated after 400 lines\n")
+		}
+		resultBody = sb.String()
+
+	case "write_to_file":
+		absPath, rel, err := resolveWorkspacePath(activeWorkspaceDir, argString("path"))
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+			resultBody = fail(err)
+			break
+		}
+		if err := os.WriteFile(absPath, []byte(argString("content")), 0644); err != nil {
+			resultBody = fail(err)
+			break
+		}
+		resultBody = "Wrote file: " + rel
+
+	case "replace_file_content":
+		absPath, rel, err := resolveWorkspacePath(activeWorkspaceDir, argString("path"))
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		data, err := os.ReadFile(absPath)
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		oldText := argString("old_text")
+		if oldText == "" {
+			resultBody = "Error: old_text is empty"
+			break
+		}
+		content := string(data)
+		if !strings.Contains(content, oldText) {
+			resultBody = "Error: old_text not found in " + rel
+			break
+		}
+		updated := strings.Replace(content, oldText, argString("new_text"), 1)
+		if err := os.WriteFile(absPath, []byte(updated), 0644); err != nil {
+			resultBody = fail(err)
+			break
+		}
+		resultBody = "Replaced content in: " + rel
+
+	case "grep_search":
+		pattern := argString("pattern")
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			resultBody = fail(err)
+			break
+		}
+		rootPath := activeWorkspaceDir
+		if pathArg := argString("path"); pathArg != "" {
+			rootPath, _, err = resolveWorkspacePath(activeWorkspaceDir, pathArg)
+			if err != nil {
+				resultBody = fail(err)
+				break
+			}
+		}
+		var matches []string
+		_ = filepath.WalkDir(rootPath, func(path string, d os.DirEntry, err error) error {
+			if err != nil || len(matches) >= 80 {
+				return nil
+			}
+			name := d.Name()
+			if d.IsDir() {
+				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" || name == "dist" || name == "build" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".dll") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".png") || strings.HasSuffix(name, ".jpg") {
+				return nil
+			}
+			data, readErr := os.ReadFile(path)
+			if readErr != nil || bytes.Contains(data, []byte{0}) {
+				return nil
+			}
+			rel, _ := filepath.Rel(activeWorkspaceDir, path)
+			for idx, line := range strings.Split(string(data), "\n") {
+				if re.MatchString(line) {
+					matches = append(matches, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(rel), idx+1, strings.TrimSpace(line)))
+					if len(matches) >= 80 {
+						break
+					}
+				}
+			}
+			return nil
+		})
+		if len(matches) == 0 {
+			resultBody = "No matches found."
+		} else {
+			resultBody = strings.Join(matches, "\n")
+		}
+
+	case "run_command":
+		command := strings.TrimSpace(argString("command"))
+		if command == "" {
+			resultBody = "Error: command is empty"
+			break
+		}
+		commandLower := strings.ToLower(command)
+		blocked := []string{" rm ", " del ", " rmdir ", " format ", " shutdown", " reboot", "git push", "git reset", "git clean", "sudo ", "su "}
+		padded := " " + commandLower + " "
+		for _, token := range blocked {
+			if strings.Contains(padded, token) {
+				resultBody = "Error: command blocked by OpenAI-compatible safety policy: " + command
+				return formatToolResult(name, resultBody, started), toolCall
+			}
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		var cmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			if _, err := exec.LookPath("bash"); err == nil {
+				cmd = exec.CommandContext(cmdCtx, "bash", "-c", command)
+			} else if _, err := exec.LookPath("powershell"); err == nil {
+				cmd = exec.CommandContext(cmdCtx, "powershell", "-Command", command)
+			} else {
+				cmd = exec.CommandContext(cmdCtx, "cmd", "/c", command)
+			}
+		} else {
+			cmd = exec.CommandContext(cmdCtx, "bash", "-c", command)
+		}
+		cmd.Dir = activeWorkspaceDir
+		cmd.Env = os.Environ()
+		out, err := cmd.CombinedOutput()
+		text := string(out)
+		if len(text) > 12000 {
+			text = text[:12000] + "\n... truncated"
+		}
+		if err != nil {
+			resultBody = fmt.Sprintf("Command failed: %v\n%s", err, text)
+		} else {
+			resultBody = text
+			if strings.TrimSpace(resultBody) == "" {
+				resultBody = "Command completed with no output."
+			}
+		}
+
+	default:
+		resultBody = "Error: unsupported tool: " + name
+	}
+
+	return formatToolResult(name, resultBody, started), toolCall
+}
+
 func (s *Service) getOpenAITranscriptMessages(convID string) []openAIMessage {
 	homeDir, err := getHomeDir()
 	if err != nil || strings.TrimSpace(convID) == "" {
@@ -598,13 +1019,15 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 	}
 
 	// 2. Load AGY-compatible context and raw transcript history.
-	type openAIChunk struct {
+	type openAIResponse struct {
 		Choices []struct {
-			Delta struct {
-				Content          string `json:"content"`
-				ReasoningContent string `json:"reasoning_content"`
-			} `json:"delta"`
-			FinishReason *string `json:"finish_reason"`
+			Message struct {
+				Role             string           `json:"role"`
+				Content          string           `json:"content"`
+				ReasoningContent string           `json:"reasoning_content"`
+				ToolCalls        []openAIToolCall `json:"tool_calls"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Error *struct {
 			Message string `json:"message"`
@@ -614,6 +1037,7 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 
 	messages := []openAIMessage{
 		{Role: "system", Content: agyCompatibilitySystemPrompt(activeWorkspaceDir)},
+		{Role: "system", Content: "You have AGY-like tools available. Use tools whenever the user asks to inspect, create, edit, test, or run code in the workspace. Do not merely provide code snippets when a file change is requested; call write_to_file or replace_file_content. After tool calls, summarize exactly what changed."},
 		{Role: "system", Content: buildWorkspaceSnapshot(activeWorkspaceDir)},
 	}
 	messages = append(messages, s.getOpenAITranscriptMessages(req.Conversation)...)
@@ -645,156 +1069,134 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
 		})
 
-		maxContinuations := 6
-		if raw := strings.TrimSpace(os.Getenv("OPENAI_MAX_CONTINUATIONS")); raw != "" {
+		maxToolRounds := 12
+		if raw := strings.TrimSpace(os.Getenv("OPENAI_MAX_TOOL_ROUNDS")); raw != "" {
 			var parsed int
-			if _, err := fmt.Sscanf(raw, "%d", &parsed); err == nil && parsed >= 0 {
-				maxContinuations = parsed
+			if _, err := fmt.Sscanf(raw, "%d", &parsed); err == nil && parsed > 0 {
+				maxToolRounds = parsed
 			}
 		}
 
 		var accumulatedContent strings.Builder
 		var accumulatedThinking strings.Builder
-		startedThought := false
+		var transcriptTools []ToolCall
 
 		writeError := func(format string, args ...any) {
 			_, _ = pw.Write([]byte("\n\n[OpenAI-compatible error] " + fmt.Sprintf(format, args...) + "\n"))
 		}
 
-		for requestNo := 0; requestNo <= maxContinuations; requestNo++ {
+		callModel := func() (openAIResponse, error) {
 			reqBody, err := json.Marshal(map[string]any{
-				"model":    modelName,
-				"messages": messages,
-				"stream":   true,
+				"model":       modelName,
+				"messages":    messages,
+				"tools":       openAIToolDefinitions(),
+				"tool_choice": "auto",
+				"stream":      false,
 			})
 			if err != nil {
-				writeError("gagal nggawe request: %v", err)
-				return
+				return openAIResponse{}, err
 			}
 
 			httpReq, err := http.NewRequestWithContext(openaiCtx, http.MethodPost, url, bytes.NewReader(reqBody))
 			if err != nil {
-				writeError("gagal nggawe HTTP request: %v", err)
-				return
+				return openAIResponse{}, err
 			}
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
 			resp, err := client.Do(httpReq)
 			if err != nil {
-				if openaiCtx.Err() != nil {
-					return
-				}
-				writeError("request gagal: %v", err)
-				return
+				return openAIResponse{}, err
 			}
+			defer resp.Body.Close()
 
+			bodyBytes, _ := io.ReadAll(resp.Body)
 			if resp.StatusCode != http.StatusOK {
-				bodyBytes, _ := io.ReadAll(resp.Body)
-				_ = resp.Body.Close()
-				writeError("API status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
-				return
+				return openAIResponse{}, fmt.Errorf("API status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 			}
 
-			var partContent strings.Builder
-			var finishReason string
-			scanner := bufio.NewScanner(resp.Body)
-			scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
-
-			for scanner.Scan() {
-				line := scanner.Text()
-				if !strings.HasPrefix(line, "data:") {
-					continue
-				}
-				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-				if data == "[DONE]" {
-					break
-				}
-
-				var chunk openAIChunk
-				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-					continue
-				}
-				if chunk.Error != nil && chunk.Error.Message != "" {
-					_ = resp.Body.Close()
-					writeError("%s", chunk.Error.Message)
-					return
-				}
-				if len(chunk.Choices) == 0 {
-					continue
-				}
-
-				choice := chunk.Choices[0]
-				if choice.FinishReason != nil {
-					finishReason = *choice.FinishReason
-				}
-
-				rc := choice.Delta.ReasoningContent
-				c := choice.Delta.Content
-
-				if rc != "" {
-					if !startedThought {
-						_, _ = pw.Write([]byte("▸ Thought\n"))
-						startedThought = true
-					}
-					accumulatedThinking.WriteString(rc)
-					lines := strings.Split(rc, "\n")
-					for _, l := range lines {
-						_, _ = pw.Write([]byte("  " + l + "\n"))
-					}
-				}
-
-				if c != "" {
-					if startedThought {
-						_, _ = pw.Write([]byte("\n"))
-						startedThought = false
-					}
-					partContent.WriteString(c)
-					accumulatedContent.WriteString(c)
-					_, _ = pw.Write([]byte(c))
-				}
+			var parsed openAIResponse
+			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
+				return openAIResponse{}, err
 			}
+			if parsed.Error != nil && parsed.Error.Message != "" {
+				return openAIResponse{}, fmt.Errorf("%s", parsed.Error.Message)
+			}
+			return parsed, nil
+		}
 
-			scanErr := scanner.Err()
-			_ = resp.Body.Close()
-			if scanErr != nil {
+		for round := 0; round < maxToolRounds; round++ {
+			parsed, err := callModel()
+			if err != nil {
 				if openaiCtx.Err() != nil {
 					return
 				}
-				writeError("stream kepotong: %v", scanErr)
+				writeError("%v", err)
+				return
+			}
+			if len(parsed.Choices) == 0 {
+				writeError("API ora mbalekake choices")
 				return
 			}
 
-			shouldContinue := finishReason == "length" || finishReason == "max_tokens"
-			if !shouldContinue {
-				break
+			msg := parsed.Choices[0].Message
+			if msg.ReasoningContent != "" {
+				accumulatedThinking.WriteString(msg.ReasoningContent)
+				_, _ = pw.Write([]byte("▸ Thought\n"))
+				for _, l := range strings.Split(msg.ReasoningContent, "\n") {
+					_, _ = pw.Write([]byte("  " + l + "\n"))
+				}
+				_, _ = pw.Write([]byte("\n"))
 			}
-			if requestNo == maxContinuations {
-				_, _ = pw.Write([]byte("\n\n[OpenAI-compatible warning] Jawaban isih kena limit token. Naikkan OPENAI_MAX_CONTINUATIONS yen pengin auto-lanjut luwih dawa.\n"))
+
+			assistantMsg := openAIMessage{Role: "assistant", Content: msg.Content, ToolCalls: msg.ToolCalls}
+			messages = append(messages, assistantMsg)
+
+			if len(msg.ToolCalls) == 0 {
+				if msg.Content != "" {
+					accumulatedContent.WriteString(msg.Content)
+					_, _ = pw.Write([]byte(msg.Content))
+				}
 				break
 			}
 
-			partial := strings.TrimSpace(partContent.String())
-			if partial == "" {
-				break
+			for _, toolCall := range msg.ToolCalls {
+				if toolCall.ID == "" {
+					toolCall.ID = fmt.Sprintf("call_%d_%d", round, len(transcriptTools))
+				}
+				if toolCall.Type == "" {
+					toolCall.Type = "function"
+				}
+				_, _ = pw.Write([]byte(fmt.Sprintf("\n● %s\n", toolCall.Function.Name)))
+				result, transcriptTool := s.executeOpenAITool(openaiCtx, activeWorkspaceDir, toolCall)
+				transcriptTools = append(transcriptTools, transcriptTool)
+				_, _ = pw.Write([]byte(result + "\n"))
+				messages = append(messages, openAIMessage{
+					Role:       "tool",
+					ToolCallID: toolCall.ID,
+					Content:    result,
+				})
+				_ = s.appendToTranscript(req.Conversation, TranscriptLine{
+					Source:    "model",
+					Type:      agyToolType(toolCall.Function.Name),
+					Content:   result,
+					CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
+				})
 			}
-			messages = append(messages,
-				openAIMessage{Role: "assistant", Content: partial},
-				openAIMessage{Role: "user", Content: "Continue exactly where you left off. Do not repeat previous text. Continue until the answer is complete."},
-			)
 		}
 
-		if startedThought {
-			_, _ = pw.Write([]byte("\n"))
+		if strings.TrimSpace(accumulatedContent.String()) == "" {
+			_, _ = pw.Write([]byte("\n[OpenAI-compatible warning] Model mandheg tanpa final answer sawise tool execution.\n"))
 		}
 
-		// Write the completed multi-request response to transcript log once.
+		// Write the completed tool-loop response to transcript log once.
 		_ = s.appendToTranscript(req.Conversation, TranscriptLine{
 			Source:    "model",
 			Type:      "PLANNER_RESPONSE",
 			Content:   accumulatedContent.String(),
 			CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
 			Thinking:  accumulatedThinking.String(),
+			ToolCalls: transcriptTools,
 		})
 	}()
 
