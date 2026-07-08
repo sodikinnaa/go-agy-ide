@@ -235,9 +235,15 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.CheckOAuthTokenExists() {
-		return "already_authenticated", nil
+	// Backup current active keyring and dummy token file
+	backupVal, backupErr := keyring.Get("gemini", "antigravity")
+	if backupErr == nil {
+		_ = keyring.Delete("gemini", "antigravity")
 	}
+
+	homeDir, _ := os.UserHomeDir()
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+	_ = os.Remove(tokenPath)
 
 	if s.activeAuthCmd != nil && s.activeAuthCmd.Process != nil {
 		_ = s.activeAuthCmd.Process.Kill()
@@ -263,11 +269,19 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 
 	stdinPipe, err := cmd.StdinPipe()
 	if err != nil {
+		if backupErr == nil && backupVal != "" {
+			_ = keyring.Set("gemini", "antigravity", backupVal)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
 		return "", fmt.Errorf("failed to create stdin pipe: %w", err)
 	}
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
+		if backupErr == nil && backupVal != "" {
+			_ = keyring.Set("gemini", "antigravity", backupVal)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
 		return "", fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
 	cmd.Stderr = cmd.Stdout
@@ -283,17 +297,33 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 			cmd.Env = os.Environ()
 			stdinPipe, err = cmd.StdinPipe()
 			if err != nil {
+				if backupErr == nil && backupVal != "" {
+					_ = keyring.Set("gemini", "antigravity", backupVal)
+					_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+				}
 				return "", fmt.Errorf("failed to create stdin pipe: %w", err)
 			}
 			stdoutPipe, err = cmd.StdoutPipe()
 			if err != nil {
+				if backupErr == nil && backupVal != "" {
+					_ = keyring.Set("gemini", "antigravity", backupVal)
+					_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+				}
 				return "", fmt.Errorf("failed to create stdout pipe: %w", err)
 			}
 			cmd.Stderr = cmd.Stdout
 			if err := cmd.Start(); err != nil {
+				if backupErr == nil && backupVal != "" {
+					_ = keyring.Set("gemini", "antigravity", backupVal)
+					_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+				}
 				return "", fmt.Errorf("failed to start agy directly: %w", err)
 			}
 		} else {
+			if backupErr == nil && backupVal != "" {
+				_ = keyring.Set("gemini", "antigravity", backupVal)
+				_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			}
 			return "", fmt.Errorf("failed to start agy: %w", err)
 		}
 	}
@@ -343,6 +373,12 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 						if endIdx := strings.IndexAny(urlPart, " \r\n\t\""); endIdx != -1 {
 							s.activeAuthURL = urlPart[:endIdx]
 							log.Printf("[AUTH FOUND URL]: %s", s.activeAuthURL)
+
+							// Restore keyring immediately once URL is generated
+							if backupErr == nil && backupVal != "" {
+								_ = keyring.Set("gemini", "antigravity", backupVal)
+								_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+							}
 						}
 					}
 				}
@@ -366,6 +402,12 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
+	// Restore keyring if timeout reached and URL not found
+	if backupErr == nil && backupVal != "" {
+		_ = keyring.Set("gemini", "antigravity", backupVal)
+		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+	}
+
 	return "", fmt.Errorf("failed to get authentication URL from agy (timeout)")
 }
 
@@ -379,8 +421,22 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 		return fmt.Errorf("no active authentication session running")
 	}
 
+	// Backup current active keyring and dummy token file
+	backupVal, backupErr := keyring.Get("gemini", "antigravity")
+	if backupErr == nil {
+		_ = keyring.Delete("gemini", "antigravity")
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+	_ = os.Remove(tokenPath)
+
 	_, err := io.WriteString(stdin, code+"\n")
 	if err != nil {
+		if backupErr == nil && backupVal != "" {
+			_ = keyring.Set("gemini", "antigravity", backupVal)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
 		return fmt.Errorf("failed to write code to stdin: %w", err)
 	}
 
@@ -389,25 +445,82 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 		done <- cmd.Wait()
 	}()
 
+	var waitErr error
 	select {
 	case err := <-done:
 		if err != nil {
 			if s.CheckOAuthTokenExists() {
-				return nil
+				waitErr = nil
+			} else {
+				waitErr = fmt.Errorf("agy authentication failed: %w", err)
 			}
-			return fmt.Errorf("agy authentication failed: %w", err)
 		}
 	case <-time.After(15 * time.Second):
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		return fmt.Errorf("agy authentication timeout (15s)")
+		waitErr = fmt.Errorf("agy authentication timeout (15s)")
 	}
 
-	if s.CheckOAuthTokenExists() {
-		return nil
+	if waitErr != nil {
+		if backupErr == nil && backupVal != "" {
+			_ = keyring.Set("gemini", "antigravity", backupVal)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
+		return waitErr
 	}
-	return fmt.Errorf("verification failed: token file not created")
+
+	// Success! Read the newly generated token from the keyring
+	newVal, err := keyring.Get("gemini", "antigravity")
+	if err == nil && newVal != "" {
+		// Sync this new token to the pool
+		var kt struct {
+			Token struct {
+				AccessToken string `json:"access_token"`
+			} `json:"token"`
+		}
+		if json.Unmarshal([]byte(newVal), &kt) == nil && kt.Token.AccessToken != "" {
+			email, fetchErr := fetchEmailFromToken(kt.Token.AccessToken)
+			if fetchErr != nil {
+				email = s.GetAuthenticatedEmail()
+			}
+			if email == "" {
+				email = "Unknown Account"
+			}
+			pool, loadErr := s.LoadAccountsPool()
+			if loadErr == nil {
+				found := false
+				for i, entry := range pool {
+					if entry.Email == email {
+						pool[i].KeyringValue = newVal
+						found = true
+						break
+					}
+				}
+				if !found {
+					pool = append(pool, AccountEntry{
+						Email:        email,
+						KeyringValue: newVal,
+					})
+				}
+				_ = s.SaveAccountsPool(pool)
+			}
+		}
+	}
+
+	// Restore original active keyring value!
+	if backupErr == nil && backupVal != "" {
+		_ = keyring.Set("gemini", "antigravity", backupVal)
+		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+	} else {
+		// If there was no original backup, keep the new token active
+		if err == nil && newVal != "" {
+			_ = keyring.Set("gemini", "antigravity", newVal)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) Logout() {

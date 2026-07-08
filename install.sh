@@ -6,7 +6,7 @@ LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/rele
 if [ -n "$LATEST_TAG" ]; then
     VERSION="$LATEST_TAG"
 else
-    VERSION="v1.3.0" # Fallback
+    VERSION="v1.3.1" # Fallback
 fi
 
 # Tampilan header
