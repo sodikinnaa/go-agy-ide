@@ -5,21 +5,20 @@ resolve_latest_version() {
     local tags testing_tag latest_tag
     tags=$(curl -fsSL "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=100" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"tag_name": "([^"]+)".*/\1/' || true)
     if [ -n "$tags" ]; then
-        # Testing release dadi channel default supaya user v1.3.5/bawah iso langsung naik ke versi testing paling anyar.
-        testing_tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.testing\.[0-9]+$' | sort -V | tail -n 1 || true)
-        if [ -n "$testing_tag" ]; then
-            echo "$testing_tag"
-            return
-        fi
         latest_tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+(\.[0-9]+)*$' | sort -V | tail -n 1 || true)
         if [ -n "$latest_tag" ]; then
             echo "$latest_tag"
             return
         fi
+        testing_tag=$(printf '%s\n' "$tags" | grep -E '^v[0-9]+\.[0-9]+\.testing\.[0-9]+$' | sort -V | tail -n 1 || true)
+        if [ -n "$testing_tag" ]; then
+            echo "$testing_tag"
+            return
+        fi
         printf '%s\n' "$tags" | head -n 1
         return
     fi
-    echo "v1.3.testing.4"
+    echo "v1.3.8"
 }
 
 REQUESTED_VERSION="${1:-${VERSION:-}}"
@@ -261,7 +260,7 @@ case "\$1" in
     install-version)
         if [ -z "\$2" ]; then
             echo "Usage: agy-mobile install-version <tag>"
-            echo "Example: agy-mobile install-version v1.3.testing.4"
+            echo "Example: agy-mobile install-version v1.3.8"
             exit 1
         fi
         TARGET_VERSION="\$2"

@@ -18,9 +18,9 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.3.testing.4"
+const AppVersion = "v1.3.8"
 
-var versionRegex = regexp.MustCompile(`v1\.3\.[0-9a-zA-Z.-]+`)
+var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
 
 type EmbeddedHTML struct {
 	IndexHTML    string

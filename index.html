@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.3.testing.4</span>
+                    <span class="text-[10px] text-slate-400">v1.3.8</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -1984,8 +1984,10 @@
                 };
                 const testingTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+\.\d+\.testing\.\d+$/.test(tag || ''));
                 const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
-                const latest = (testingTags.sort(compareTags).pop() || stableTags.sort(compareTags).pop() || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.3.testing.4";
+                const latestStable = stableTags.sort(compareTags).pop();
+                const latestTesting = testingTags.sort(compareTags).pop();
+                const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
+                const current = "v1.3.8";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -2010,7 +2012,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.4). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (${current}). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
                 }
                 if (updateInst) updateInst.classList.remove('hidden');
             } catch (err) {
@@ -2113,7 +2115,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.4</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.8</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
