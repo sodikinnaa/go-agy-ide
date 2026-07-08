@@ -823,7 +823,7 @@
                         inThought = false;
                     }
                     // Close details block if a new header or regular text starts
-                    if (inDetails && (line.startsWith('#') || line.startsWith('###') || /^[A-Za-z]/.test(trimmed))) {
+                    if (inDetails && (line.startsWith('#') || line.startsWith('###') || (line.length > 0 && !line.startsWith(' ') && !line.startsWith('\t') && /^[A-Za-z]/.test(trimmed)))) {
                         output.push('</pre></details>');
                         inDetails = false;
                     }
