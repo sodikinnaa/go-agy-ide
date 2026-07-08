@@ -842,8 +842,10 @@
         }
 
         // Chat helper
-        function appendChatMessage(sender, text, isMarkdown = true, timestamp = null) {
-            const container = document.getElementById('chat-messages');
+        function appendChatMessage(sender, text, isMarkdown = true, timestamp = null, container = null, skipIconCreate = false) {
+            if (!container) {
+                container = document.getElementById('chat-messages');
+            }
             const row = document.createElement('div');
             row.className = "flex items-start space-x-3";
 
@@ -919,7 +921,9 @@
             container.appendChild(row);
             container.scrollTop = container.scrollHeight;
 
-            lucide.createIcons();
+            if (!skipIconCreate) {
+                lucide.createIcons();
+            }
             return body;
         }
 
@@ -1369,6 +1373,45 @@
         // --- Multi-turn Conversation & History Utilities ---
         let activeConversationId = "";
         let isHistoryOpen = false;
+        let currentConversationMessages = [];
+
+        function loadOlderMessages(upToIndex) {
+            const messages = document.getElementById('chat-messages');
+            
+            // Remove the old load more button
+            const btn = document.getElementById('load-older-btn');
+            if (btn) btn.remove();
+            
+            const limit = 30;
+            const startIndex = Math.max(0, upToIndex - limit);
+            
+            const fragment = document.createDocumentFragment();
+            
+            if (startIndex > 0) {
+                const loadMoreBtn = document.createElement('button');
+                loadMoreBtn.id = 'load-older-btn';
+                loadMoreBtn.className = 'w-full py-2 text-xs text-slate-400 hover:text-white bg-brand-panel hover:bg-brand-border border border-brand-border rounded-xl mb-4 transition duration-200';
+                loadMoreBtn.innerHTML = `<i data-lucide="arrow-up" class="w-3.5 h-3.5 inline mr-1"></i>Muat obrolan sadurunge (${startIndex} pesan)`;
+                loadMoreBtn.onclick = () => loadOlderMessages(startIndex);
+                fragment.appendChild(loadMoreBtn);
+            }
+            
+            const tempDiv = document.createElement('div');
+            for (let i = startIndex; i < upToIndex; i++) {
+                const msg = currentConversationMessages[i];
+                appendChatMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.role === 'model', msg.timestamp, tempDiv, true);
+            }
+            
+            while (tempDiv.firstChild) {
+                fragment.appendChild(tempDiv.firstChild);
+            }
+            
+            const oldScrollHeight = messages.scrollHeight;
+            messages.insertBefore(fragment, messages.firstChild);
+            lucide.createIcons();
+            
+            messages.scrollTop = messages.scrollHeight - oldScrollHeight;
+        }
 
         function startNewChat() {
             activeConversationId = "";
@@ -1509,14 +1552,32 @@
                 localStorage.setItem('activeConversationId', id);
                 messages.innerHTML = '';
 
-                if (detail.messages.length === 0) {
+                currentConversationMessages = detail.messages || [];
+                const total = currentConversationMessages.length;
+
+                if (total === 0) {
                     messages.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">Obrolan iki kosong</div>';
                     return;
                 }
 
-                detail.messages.forEach(msg => {
-                    appendChatMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.role === 'model', msg.timestamp);
-                });
+                const limit = 20;
+                const startIndex = Math.max(0, total - limit);
+
+                if (startIndex > 0) {
+                    const loadMoreBtn = document.createElement('button');
+                    loadMoreBtn.id = 'load-older-btn';
+                    loadMoreBtn.className = 'w-full py-2 text-xs text-slate-400 hover:text-white bg-brand-panel hover:bg-brand-border border border-brand-border rounded-xl mb-4 transition duration-200';
+                    loadMoreBtn.innerHTML = `<i data-lucide="arrow-up" class="w-3.5 h-3.5 inline mr-1"></i>Muat obrolan sadurunge (${startIndex} pesan)`;
+                    loadMoreBtn.onclick = () => loadOlderMessages(startIndex);
+                    messages.appendChild(loadMoreBtn);
+                }
+
+                for (let i = startIndex; i < total; i++) {
+                    const msg = currentConversationMessages[i];
+                    appendChatMessage(msg.role === 'user' ? 'user' : 'bot', msg.content, msg.role === 'model', msg.timestamp, null, true);
+                }
+                lucide.createIcons();
+                messages.scrollTop = messages.scrollHeight;
                 
                 logToTerminal(`[SYSTEM] Sesi obrolan resumed: ${id}`);
             } catch (err) {
