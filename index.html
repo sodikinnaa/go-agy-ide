@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.2.4</span>
+                    <span class="text-[10px] text-slate-400">v1.2.3</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -106,9 +106,6 @@
             </span>
             <button onclick="saveActiveFile()" class="p-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition duration-200 flex items-center justify-center" title="Save File">
                 <i data-lucide="save" class="w-4 h-4"></i>
-            </button>
-            <button onclick="openQuotaModal()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Quota & Account Info">
-                <i data-lucide="user" class="w-4 h-4"></i>
             </button>
             <button onclick="refreshWorkspace()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Refresh">
                 <i data-lucide="refresh-cw" class="w-4 h-4"></i>
@@ -1597,26 +1594,6 @@
                 .replace(/'/g, "&#039;");
         }
 
-        // --- Quota & Account Modal Utilities ---
-        async function openQuotaModal() {
-            document.getElementById('quota-modal').classList.remove('hidden');
-            try {
-                const res = await fetch('/api/auth/status');
-                if (res.ok) {
-                    const data = await res.json();
-                    document.getElementById('quota-email').innerText = data.email || 'Ora Mlebu (Belum Login)';
-                    document.getElementById('quota-project').innerText = data.project || 'Ora Ono (Belum Ada Project)';
-                }
-            } catch (err) {
-                console.error("Gagal ngambil status kuota:", err);
-            }
-            lucide.createIcons();
-        }
-
-        function closeQuotaModal() {
-            document.getElementById('quota-modal').classList.add('hidden');
-        }
-
         // --- Update & Webhook Modal Utilities ---
         function openUpdateModal() {
             document.getElementById('update-modal').classList.remove('hidden');
@@ -1634,11 +1611,11 @@
             const updateInst = document.getElementById('update-inst');
             
             try {
-                const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases');
+                const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases/latest');
                 if (!res.ok) throw new Error();
                 const data = await res.json();
-                const latest = data[0].tag_name;
-                const current = "v1.2.4";
+                const latest = data.tag_name;
+                const current = "v1.2.3";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1654,7 +1631,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.2.4).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.2.3).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1751,7 +1728,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.2.4</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.2.3</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -1779,68 +1756,6 @@
                 </div>
 
                 </div>
-        </div>
-    </div>
-
-    <!-- Quota & Account Modal -->
-    <div id="quota-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div class="w-full max-w-md bg-brand-panel border border-brand-border p-6 rounded-2xl shadow-2xl relative shadow-purple-900/10">
-            <button onclick="closeQuotaModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-            <h2 class="text-lg font-bold text-white mb-2 flex items-center space-x-2">
-                <i data-lucide="database" class="w-5 h-5 text-brand-accent animate-pulse"></i>
-                <span>Informasi Akun & Quota</span>
-            </h2>
-            <p class="text-[11px] text-slate-400 mb-4">Informasi akun Google sing digunakake sarta detail quota model.</p>
-            
-            <div class="space-y-4 text-xs">
-                <!-- Account Info -->
-                <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2">
-                    <div class="flex justify-between items-center">
-                        <span class="text-slate-400 font-medium">Akun Google:</span>
-                        <span id="quota-email" class="font-mono font-bold text-white truncate max-w-[200px]">Checking...</span>
-                    </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-slate-400 font-medium">GCP Project:</span>
-                        <span id="quota-project" class="font-mono font-bold text-white truncate max-w-[200px]">Checking...</span>
-                    </div>
-                </div>
-
-                <!-- Limits info table -->
-                <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2.5">
-                    <div class="font-bold text-slate-200 text-[11px] uppercase tracking-wider">Batas Quota Standard</div>
-                    <div class="space-y-1.5 leading-relaxed text-slate-300">
-                        <div class="flex justify-between">
-                            <span class="font-semibold text-white">Gemini 3.5 Flash</span>
-                            <span class="text-[11px] text-slate-400">15 RPM / 1M TPM (Free)</span>
-                        </div>
-                        <div class="flex justify-between">
-                            <span class="font-semibold text-white">Gemini 3.1 Pro</span>
-                            <span class="text-[11px] text-slate-400">2 RPM / 32k TPM (Free)</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Quick Actions -->
-                <div class="bg-purple-950/20 border border-brand-accent/30 p-3 rounded-xl space-y-2">
-                    <div class="font-bold text-white mb-1 flex items-center space-x-1">
-                        <i data-lucide="external-link" class="w-4 h-4 text-brand-accent"></i>
-                        <span>Link Penting</span>
-                    </div>
-                    <div class="grid grid-cols-2 gap-2 text-center">
-                        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="py-2 px-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-[10px] font-semibold transition">
-                            Google AI Studio
-                        </a>
-                        <a href="https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas" target="_blank" class="py-2 px-2.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded-xl text-[10px] font-semibold transition">
-                            GCP API Quotas
-                        </a>
-                    </div>
-                    <p class="text-[10px] text-slate-400 pt-1 text-center italic">
-                        *Detail panggunaan kredit organisasi bisa dipriksa nganggo perintah <code class="font-mono bg-brand-dark px-1 py-0.5 rounded text-brand-accent">/credits</code> ing Terminal CLI.
-                    </p>
-                </div>
-            </div>
         </div>
     </div>
 </body>
