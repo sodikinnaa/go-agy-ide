@@ -143,8 +143,8 @@ func TestHandleAuthStatus(t *testing.T) {
 	if !ok {
 		t.Errorf("expected 'version' key in response")
 	}
-	if versionVal != "v1.3.4" {
-		t.Errorf("expected version to be 'v1.3.4', got %v", versionVal)
+	if versionVal != "v1.3.5" {
+		t.Errorf("expected version to be 'v1.3.5', got %v", versionVal)
 	}
 }
 
@@ -554,5 +554,137 @@ func TestHandleSelfUpdate(t *testing.T) {
 
 	if !strings.Contains(rrPost.Body.String(), "Pembaruan dimulai") {
 		t.Errorf("expected response to indicate update started, got: %s", rrPost.Body.String())
+	}
+}
+
+func TestAccountPoolAPI(t *testing.T) {
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	os.Setenv("PASSWORD", "")
+	authSvc.LoadPassword()
+	sessionToken := authSvc.InitSession()
+
+	// Mock valid Google OAuth token file
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get home dir: %v", err)
+	}
+	tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
+	tokenPath := filepath.Join(tokenDir, "antigravity-oauth-token")
+
+	originalExists := false
+	if _, err := os.Stat(tokenPath); err == nil {
+		originalExists = true
+	}
+	backupPath := tokenPath + ".test_bak"
+	if originalExists {
+		_ = os.Rename(tokenPath, backupPath)
+	}
+	defer func() {
+		if originalExists {
+			_ = os.Rename(backupPath, tokenPath)
+		} else {
+			_ = os.Remove(tokenPath)
+		}
+	}()
+
+	_ = os.MkdirAll(tokenDir, 0755)
+	_ = os.WriteFile(tokenPath, []byte("dummy-token"), 0600)
+
+	// Clear out any existing pool file first
+	poolPath := authSvc.GetAccountsPoolPath()
+	_ = os.Remove(poolPath)
+	defer os.Remove(poolPath)
+
+	// Save test accounts to pool file directly to simulate pool state
+	mockPool := []auth.AccountEntry{
+		{
+			Email:        "test1@gmail.com",
+			KeyringValue: `{"token":{"access_token":"mock-token-1"}}`,
+		},
+		{
+			Email:        "test2@gmail.com",
+			KeyringValue: `{"token":{"access_token":"mock-token-2"}}`,
+		},
+	}
+	_ = authSvc.SaveAccountsPool(mockPool)
+
+	// 1. Test GET /api/auth/pool
+	reqGet := httptest.NewRequest(http.MethodGet, "/api/auth/pool", nil)
+	reqGet.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrGet := httptest.NewRecorder()
+
+	h.AuthMiddleware(h.HandleGetAccountsPool).ServeHTTP(rrGet, reqGet)
+	if rrGet.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rrGet.Code)
+	}
+
+	var getResp map[string]any
+	if err := json.NewDecoder(rrGet.Body).Decode(&getResp); err != nil {
+		t.Fatalf("failed to parse GET pool response: %v", err)
+	}
+
+	accountsVal, ok := getResp["accounts"]
+	if !ok {
+		t.Errorf("expected 'accounts' in pool response")
+	}
+	accountsSlice, ok := accountsVal.([]any)
+	if !ok || len(accountsSlice) < 2 {
+		t.Errorf("expected accounts slice of length at least 2, got: %v", accountsVal)
+	}
+
+	// 2. Test POST /api/auth/pool/switch
+	switchReqBody := `{"email":"test2@gmail.com"}`
+	reqSwitch := httptest.NewRequest(http.MethodPost, "/api/auth/pool/switch", strings.NewReader(switchReqBody))
+	reqSwitch.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrSwitch := httptest.NewRecorder()
+
+	h.AuthMiddleware(h.HandleSwitchAccount).ServeHTTP(rrSwitch, reqSwitch)
+	if rrSwitch.Code != http.StatusOK {
+		t.Errorf("expected status 200 on switch, got %d", rrSwitch.Code)
+	}
+
+	// 3. Test POST /api/auth/pool/delete
+	deleteReqBody := `{"email":"test1@gmail.com"}`
+	reqDelete := httptest.NewRequest(http.MethodPost, "/api/auth/pool/delete", strings.NewReader(deleteReqBody))
+	reqDelete.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrDelete := httptest.NewRecorder()
+
+	h.AuthMiddleware(h.HandleDeleteAccount).ServeHTTP(rrDelete, reqDelete)
+	if rrDelete.Code != http.StatusOK {
+		t.Errorf("expected status 200 on delete, got %d", rrDelete.Code)
+	}
+
+	// Verify it got deleted from the pool
+	updatedPool, err := authSvc.LoadAccountsPool()
+	if err != nil {
+		t.Fatalf("failed to load pool: %v", err)
+	}
+	foundTest1 := false
+	foundTest2 := false
+	for _, entry := range updatedPool {
+		if entry.Email == "test1@gmail.com" {
+			foundTest1 = true
+		}
+		if entry.Email == "test2@gmail.com" {
+			foundTest2 = true
+		}
+	}
+	if foundTest1 {
+		t.Errorf("expected test1@gmail.com to be deleted from pool")
+	}
+	if !foundTest2 {
+		t.Errorf("expected test2@gmail.com to remain in pool")
+	}
+
+	// 4. Test POST /api/auth/google/clear
+	reqClear := httptest.NewRequest(http.MethodPost, "/api/auth/google/clear", nil)
+	reqClear.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rrClear := httptest.NewRecorder()
+
+	h.AuthMiddleware(h.HandleClearGoogleAuth).ServeHTTP(rrClear, reqClear)
+	if rrClear.Code != http.StatusOK {
+		t.Errorf("expected status 200 on google clear, got %d", rrClear.Code)
 	}
 }
