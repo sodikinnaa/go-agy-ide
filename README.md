@@ -29,7 +29,7 @@ Berikut adalah galeri tampilan antarmuka Mobile IDE pada perangkat seluler (HP A
 ## Persyaratan Sistem
 - **Go (Golang)**: Versi 1.16 utawa luwih anyar (kudu ana mung yen njenengan kepengin ngompilasi dhewe saka source code).
 - **Antigravity CLI (`agy`)**: Wis terinstal lan terotentikasi ing server.
-- **Bash**: Kanggo nglakokake perintah ing terminal console.
+- **Bash, PowerShell, utawa CMD**: Kanggo nglakokake perintah ing terminal console (ing Windows bakal otomatis nggunakake PowerShell utawa CMD yen Bash ora ditemokake).
 
 > [!NOTE]
 > **Kompatibilitas GLIBC**:
@@ -64,6 +64,137 @@ curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.
    PASSWORD=sandi_njenengan PORT=8080 ./mobile-agy
    ```
    *Secara default, server bakal mlaku ing port `8080` lan ngrungokake kabeh antarmuka jaringan (`0.0.0.0:8080`).*
+
+### 🏁 Panduan Lengkap kanggo Pangguna Windows
+
+Yen njenengan nggunakake Windows, iki tutorial langkah-demi-langkah sing luwih lengkap kanggo nginstal lan nglakokake Mobile IDE tanpa kudu nginstal compiler Go.
+
+#### Langkah 1: Instal Google Antigravity CLI (`agy`)
+Mobile IDE butuh tool CLI `agy` kanggo proses chat lan otentikasi.
+* **Nggunakake Git Bash / WSL**:
+  Jalankan perintah iki ing Git Bash:
+  ```bash
+  curl -fsSL https://antigravity.google/cli/install.sh | bash
+  ```
+* **Nggunakake PowerShell / CMD (Manual)**:
+  1. Undhuh file binary `agy.exe` kanggo Windows saka situs resmi Antigravity.
+  2. Simpen file `agy.exe` ing folder contone `C:\Users\Username\.local\bin` utawa folder liyane.
+  3. Lebokake path folder kasebut menyang **Environment Variables (PATH)** Windows supaya bisa diakses saka ngendi wae.
+
+#### Langkah 2: Undhuh Mobile IDE Binary (`mobile-agy.exe`)
+Bukak PowerShell utawa Command Prompt (CMD), banjur nggawe folder anyar lan undhuh binary-ne:
+* **PowerShell**:
+  ```powershell
+  mkdir mobile-ide; cd mobile-ide
+  curl.exe -L "https://github.com/sodikinnaa/go-agy-ide/releases/latest/download/mobile-agy-windows-amd64.exe" -o mobile-agy.exe
+  ```
+* **Command Prompt (CMD)**:
+  ```cmd
+  mkdir mobile-ide && cd mobile-ide
+  curl.exe -L "https://github.com/sodikinnaa/go-agy-ide/releases/latest/download/mobile-agy-windows-amd64.exe" -o mobile-agy.exe
+  ```
+
+*Cathetan: Yen njenengan kepengin ngompilasi dhewe saka source code (kudu wis nginstal Go), jalankan perintah iki ing terminal:*
+```cmd
+go build -o mobile-agy.exe main.go
+```
+
+#### Langkah 3: Nglakokake Server
+Njenengan kudu ngeset sandi keamanan lan port sadurunge nglakokake server:
+* **PowerShell**:
+  ```powershell
+  $env:PASSWORD="sandi_njenengan"
+  $env:PORT="8080"
+  .\mobile-agy.exe
+  ```
+* **Command Prompt (CMD)**:
+  ```cmd
+  set PASSWORD=sandi_njenengan
+  set PORT=8080
+  mobile-agy.exe
+  ```
+* **Git Bash / WSL**:
+  ```bash
+  PASSWORD=sandi_njenengan PORT=8080 ./mobile-agy.exe
+  ```
+*Secara default, server bakal mlaku ing port `8080` lan ngrungokake kabeh antarmuka jaringan (`0.0.0.0:8080`).*
+
+#### Langkah 4: Mbukak Akses Firewall Windows (Penting!)
+Supaya HP Android/iOS bisa ngakses server Mobile IDE sing mlaku ing laptop Windows, njenengan kudu ngizini port kasebut liwat Windows Defender Firewall.
+
+Jalankan perintah iki ing **PowerShell minangka Administrator (Run as Administrator)**:
+```powershell
+New-NetFirewallRule -DisplayName "Antigravity Mobile IDE" -Direction Inbound -LocalPort 8080 -Protocol TCP -Action Allow
+```
+*(Yen njenengan nggunakake port liyane saliyane `8080`, ganti nilai `-LocalPort` cocog karo port sing diset).*
+
+#### Langkah 5: Nyambungake HP Android/iOS
+1. Priksa manawa HP lan laptop Windows nyambung ing **siji jaringan Wi-Fi sing padha**.
+2. Goleki IP lokal laptop Windows:
+   * Bukak CMD, ketik `ipconfig`.
+   * Goleki bagean Wi-Fi utawa Ethernet, banjur cathet **IPv4 Address** (contone: `192.168.1.15`).
+3. Bukak browser (Chrome, lsp.) ing HP, banjur ketik alamat kasebut karo port-e:
+   ```text
+   http://192.168.1.15:8080
+   ```
+4. Lebokake sandi keamanan sing wis njenengan set ing Langkah 3 (`sandi_njenengan`).
+
+---
+
+## Provider AI OpenAI-Compatible (Opsional)
+
+Mobile IDE tetep njaga integrasi resmi **Antigravity CLI (`agy`)** minangka default. Yen pengin nambah sumber AI liyane, sampeyan bisa nyetel provider **OpenAI-compatible** kayata OpenAI, DeepSeek, OpenRouter, LM Studio, utawa Ollama tanpa mbusak `agy`.
+
+### Konfigurasi saka UI
+Sawise login sandi, bukak halaman utama banjur klik tombol **gear/settings** ing panel chat. Saka kono sampeyan bisa:
+- ngisi utawa ngganti **API key**,
+- ngisi **endpoint base URL**,
+- klik **Fetch models dari key** kanggo njupuk daftar model saka endpoint `/models`,
+- nyimpen daftar model supaya muncul ing dropdown chat.
+
+API key ora dibalikke mentah menyang browser; UI mung nampilake status lan key sing di-mask.
+
+### Konfigurasi nganggo file `.env`
+Gawe file `.env` ing folder sing padha karo `mobile-agy.exe`:
+```env
+PASSWORD=sandi_njenengan
+PORT=8080
+OPENAI_API_KEY=sk-isi_api_key_kene
+OPENAI_API_BASE=https://api.openai.com/v1
+OPENAI_MODELS=gpt-4o,gpt-4o-mini,deepseek-chat
+```
+
+Cathetan:
+- `OPENAI_API_BASE` default-e `https://api.openai.com/v1` yen ora diset.
+- `OPENAI_MODELS` dipisah koma. Model iki bakal muncul ing daftar model kanthi prefix `openai/`, contone `openai/gpt-4o`.
+- Kanggo Ollama lokal, biasane nganggo `OPENAI_API_BASE=http://localhost:11434/v1` lan `OPENAI_API_KEY=ollama`.
+- Model resmi saka `agy` tetep kasedhiya; model eksternal mung ditambahake minangka pilihan ekstra.
+
+### Contoh PowerShell tanpa file `.env`
+```powershell
+$env:PASSWORD="sandi_njenengan"
+$env:OPENAI_API_KEY="sk-isi_api_key_kene"
+$env:OPENAI_API_BASE="https://api.openai.com/v1"
+$env:OPENAI_MODELS="gpt-4o,gpt-4o-mini"
+.\mobile-agy.exe
+```
+
+### Endpoint konfigurasi via curl
+```bash
+curl -X POST http://localhost:8080/api/openai/settings \
+  -H "Content-Type: application/json" \
+  -d '{"apiKey":"sk-isi_api_key_kene","apiBase":"https://api.openai.com/v1","models":"gpt-4o,gpt-4o-mini"}'
+```
+
+Njupuk daftar model saka key/endpoint sing wis disimpan:
+```bash
+curl -s http://localhost:8080/api/openai/models
+```
+
+### Contoh chat via curl
+```bash
+curl -N -d "prompt=Tuliskan fungsi Go kanggo validasi email" -d "model=openai/gpt-4o-mini" http://localhost:8080/api/chat
+```
 
 ---
 

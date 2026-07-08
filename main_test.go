@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zalando/go-keyring"
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
 	"mobile-agy/internal/handler"
 	"mobile-agy/internal/terminal"
 	"mobile-agy/internal/workspace"
+
+	"github.com/zalando/go-keyring"
 )
 
 // Helper function to setup services & handler for testing
@@ -145,8 +146,8 @@ func TestHandleAuthStatus(t *testing.T) {
 	if !ok {
 		t.Errorf("expected 'version' key in response")
 	}
-	if versionVal != "v1.3.testing.1" {
-		t.Errorf("expected version to be 'v1.3.testing.1', got %v", versionVal)
+	if versionVal != "v1.3.testing.2" {
+		t.Errorf("expected version to be 'v1.3.testing.2', got %v", versionVal)
 	}
 }
 
@@ -289,7 +290,7 @@ func TestHandleChatHistoryList(t *testing.T) {
 
 	// Set active workspace to match mock history workspace
 	originalWorkspace := workspaceSvc.ActiveWorkspaceDir()
-	
+
 	// Create mock workspace directory
 	mockWSDir := filepath.Join(tempDir, "workspace")
 	err := os.MkdirAll(mockWSDir, 0755)
@@ -306,6 +307,7 @@ func TestHandleChatHistoryList(t *testing.T) {
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
+	originalUserProfile := os.Getenv("USERPROFILE")
 	tempHome, err := os.MkdirTemp("", "test_home_*")
 	if err != nil {
 		t.Fatalf("failed to create temp home: %v", err)
@@ -313,7 +315,15 @@ func TestHandleChatHistoryList(t *testing.T) {
 	defer os.RemoveAll(tempHome)
 
 	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", originalHome)
+	os.Setenv("USERPROFILE", tempHome)
+	auth.HomeDirOverride = tempHome
+	chat.HomeDirOverride = tempHome
+	defer func() {
+		os.Setenv("HOME", originalHome)
+		os.Setenv("USERPROFILE", originalUserProfile)
+		auth.HomeDirOverride = ""
+		chat.HomeDirOverride = ""
+	}()
 
 	// Write mock history.jsonl
 	historyDir := filepath.Join(tempHome, ".gemini", "antigravity-cli")
@@ -328,10 +338,18 @@ func TestHandleChatHistoryList(t *testing.T) {
 		t.Fatalf("failed to write dummy token: %v", err)
 	}
 
-	mockData := `{"display":"Test Prompt 1","timestamp":1000,"workspace":"` + activeWS + `","conversationId":"conv-1"}
-{"display":"Test Prompt 2","timestamp":2000,"workspace":"` + activeWS + `","conversationId":"conv-2"}
-{"display":"Test Prompt 3","timestamp":3000,"workspace":"` + activeWS + `","conversationId":"conv-1"}
-`
+	type MockHistoryEntry struct {
+		Display        string `json:"display"`
+		Timestamp      int64  `json:"timestamp"`
+		Workspace      string `json:"workspace"`
+		ConversationID string `json:"conversationId"`
+	}
+
+	e1, _ := json.Marshal(MockHistoryEntry{Display: "Test Prompt 1", Timestamp: 1000, Workspace: activeWS, ConversationID: "conv-1"})
+	e2, _ := json.Marshal(MockHistoryEntry{Display: "Test Prompt 2", Timestamp: 2000, Workspace: activeWS, ConversationID: "conv-2"})
+	e3, _ := json.Marshal(MockHistoryEntry{Display: "Test Prompt 3", Timestamp: 3000, Workspace: activeWS, ConversationID: "conv-1"})
+	mockData := string(e1) + "\n" + string(e2) + "\n" + string(e3) + "\n"
+
 	err = os.WriteFile(filepath.Join(historyDir, "history.jsonl"), []byte(mockData), 0644)
 	if err != nil {
 		t.Fatalf("failed to write mock history file: %v", err)
@@ -379,6 +397,7 @@ func TestHandleChatHistoryDetail(t *testing.T) {
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
+	originalUserProfile := os.Getenv("USERPROFILE")
 	tempHome, err := os.MkdirTemp("", "test_home_*")
 	if err != nil {
 		t.Fatalf("failed to create temp home: %v", err)
@@ -386,7 +405,15 @@ func TestHandleChatHistoryDetail(t *testing.T) {
 	defer os.RemoveAll(tempHome)
 
 	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", originalHome)
+	os.Setenv("USERPROFILE", tempHome)
+	auth.HomeDirOverride = tempHome
+	chat.HomeDirOverride = tempHome
+	defer func() {
+		os.Setenv("HOME", originalHome)
+		os.Setenv("USERPROFILE", originalUserProfile)
+		auth.HomeDirOverride = ""
+		chat.HomeDirOverride = ""
+	}()
 
 	// Write mock transcript.jsonl
 	convID := "conv-123"
@@ -458,6 +485,7 @@ func TestHandlePreviewFile(t *testing.T) {
 
 	// Mock HOME env
 	originalHome := os.Getenv("HOME")
+	originalUserProfile := os.Getenv("USERPROFILE")
 	tempHome, err := os.MkdirTemp("", "test_home_*")
 	if err != nil {
 		t.Fatalf("failed to create temp home: %v", err)
@@ -465,7 +493,15 @@ func TestHandlePreviewFile(t *testing.T) {
 	defer os.RemoveAll(tempHome)
 
 	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", originalHome)
+	os.Setenv("USERPROFILE", tempHome)
+	auth.HomeDirOverride = tempHome
+	chat.HomeDirOverride = tempHome
+	defer func() {
+		os.Setenv("HOME", originalHome)
+		os.Setenv("USERPROFILE", originalUserProfile)
+		auth.HomeDirOverride = ""
+		chat.HomeDirOverride = ""
+	}()
 
 	// Write dummy Google token to pass Layer 2 Google Auth check
 	historyDir := filepath.Join(tempHome, ".gemini", "antigravity-cli")
@@ -511,6 +547,7 @@ func TestHandleSelfUpdate(t *testing.T) {
 
 	// Mock HOME env to bypass Layer 2 Google Auth
 	originalHome := os.Getenv("HOME")
+	originalUserProfile := os.Getenv("USERPROFILE")
 	tempHome, err := os.MkdirTemp("", "test_home_*")
 	if err != nil {
 		t.Fatalf("failed to create temp home: %v", err)
@@ -518,7 +555,15 @@ func TestHandleSelfUpdate(t *testing.T) {
 	defer os.RemoveAll(tempHome)
 
 	os.Setenv("HOME", tempHome)
-	defer os.Setenv("HOME", originalHome)
+	os.Setenv("USERPROFILE", tempHome)
+	auth.HomeDirOverride = tempHome
+	chat.HomeDirOverride = tempHome
+	defer func() {
+		os.Setenv("HOME", originalHome)
+		os.Setenv("USERPROFILE", originalUserProfile)
+		auth.HomeDirOverride = ""
+		chat.HomeDirOverride = ""
+	}()
 
 	// Write dummy Google token to pass Layer 2 Google Auth check
 	historyDir := filepath.Join(tempHome, ".gemini", "antigravity-cli")
@@ -692,17 +737,23 @@ func TestAccountPoolAPI(t *testing.T) {
 }
 
 func TestStartGoogleAuthAndSubmitGoogleAuthCode(t *testing.T) {
-	// 1. Backup existing keyring and token file
-	backupVal, backupErr := keyring.Get("gemini", "antigravity")
-	homeDir, _ := os.UserHomeDir()
-	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-	var backupFileContent []byte
-	backupFileExist := false
-	if _, err := os.Stat(tokenPath); err == nil {
-		backupFileContent, _ = os.ReadFile(tokenPath)
-		backupFileExist = true
-		_ = os.Remove(tokenPath)
+	// 1. Isolate auth files from the real user profile. Windows caches os.UserHomeDir(),
+	// so use package overrides in addition to HOME/USERPROFILE.
+	originalHome := os.Getenv("HOME")
+	originalUserProfile := os.Getenv("USERPROFILE")
+	tempHome, err := os.MkdirTemp("", "test_auth_home_*")
+	if err != nil {
+		t.Fatalf("failed to create temp home: %v", err)
 	}
+	defer os.RemoveAll(tempHome)
+
+	os.Setenv("HOME", tempHome)
+	os.Setenv("USERPROFILE", tempHome)
+	auth.HomeDirOverride = tempHome
+	chat.HomeDirOverride = tempHome
+
+	// Backup existing keyring, but keep token files inside the temp home only.
+	backupVal, backupErr := keyring.Get("gemini", "antigravity")
 
 	defer func() {
 		// Restore everything in deferred cleanup
@@ -711,11 +762,10 @@ func TestStartGoogleAuthAndSubmitGoogleAuthCode(t *testing.T) {
 		} else {
 			_ = keyring.Delete("gemini", "antigravity")
 		}
-		if backupFileExist {
-			_ = os.WriteFile(tokenPath, backupFileContent, 0600)
-		} else {
-			_ = os.Remove(tokenPath)
-		}
+		os.Setenv("HOME", originalHome)
+		os.Setenv("USERPROFILE", originalUserProfile)
+		auth.HomeDirOverride = ""
+		chat.HomeDirOverride = ""
 	}()
 
 	// 2. Create mock agy Go program source code
@@ -767,16 +817,21 @@ func main() {
 	}
 
 	// 3. Compile mock agy binary
-	mockBinPath := filepath.Join(tempDir, "agy")
+	mockBinPath := filepath.Join(tempDir, "agy.exe")
 	cmdCompile := exec.Command("go", "build", "-o", mockBinPath, srcPath)
 	if out, err := cmdCompile.CombinedOutput(); err != nil {
 		t.Fatalf("failed to compile mock agy: %v\nOutput: %s", err, out)
 	}
 
-	// 4. Update PATH env to put mock agy at the beginning
+	// 4. Force auth to use the mock agy binary instead of a real system install.
 	oldPath := os.Getenv("PATH")
+	oldAgyPath := os.Getenv("AGY_PATH")
 	os.Setenv("PATH", tempDir+string(os.PathListSeparator)+oldPath)
-	defer os.Setenv("PATH", oldPath)
+	os.Setenv("AGY_PATH", mockBinPath)
+	defer func() {
+		os.Setenv("PATH", oldPath)
+		os.Setenv("AGY_PATH", oldAgyPath)
+	}()
 
 	os.Setenv("FORCE_DIRECT_AUTH", "true")
 	defer os.Unsetenv("FORCE_DIRECT_AUTH")

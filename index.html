@@ -95,7 +95,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.3.testing.1</span>
+                    <span class="text-[10px] text-slate-400">v1.3.testing.2</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -188,6 +188,9 @@
                     <button onclick="toggleChatHistory()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Riwayat Chat">
                         <i data-lucide="history" class="w-4 h-4"></i>
                     </button>
+                    <button onclick="toggleOpenAISettings()" class="p-1.5 hover:bg-brand-panel text-slate-400 hover:text-white rounded-lg transition duration-200" title="Setelan OpenAI-Compatible">
+                        <i data-lucide="settings" class="w-4 h-4"></i>
+                    </button>
                     <select id="model-select" class="text-xs bg-brand-panel border border-brand-border px-2 py-1 rounded text-slate-300 focus:outline-none focus:border-brand-500">
                         <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
                         <option value="gemini-3.1-pro">Gemini 3.1 Pro</option>
@@ -195,6 +198,26 @@
                         <option value="gpt-oss">GPT-OSS</option>
                     </select>
                 </div>
+            </div>
+
+            <!-- OpenAI-Compatible Settings Overlay -->
+            <div id="openai-settings-pane" class="hidden border-b border-brand-border bg-brand-dark/95 p-3 space-y-2 text-xs">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-semibold text-slate-400 uppercase tracking-wider">OpenAI-Compatible Provider</span>
+                    <button onclick="toggleOpenAISettings()" class="text-brand-accent hover:underline flex items-center space-x-1">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i><span>Tutup</span>
+                    </button>
+                </div>
+                <div id="openai-status" class="text-[11px] text-slate-500">Ngundhuh setelan...</div>
+                <input id="openai-api-key" type="password" autocomplete="off" placeholder="API key anyar (kosongi yen ora diganti)" class="w-full bg-brand-panel border border-brand-border rounded px-2 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500">
+                <input id="openai-api-base" type="text" placeholder="Endpoint base, contoh: https://api.openai.com/v1" class="w-full bg-brand-panel border border-brand-border rounded px-2 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500">
+                <textarea id="openai-models" rows="2" placeholder="Model manual dipisah koma, contoh: gpt-4o,gpt-4o-mini" class="w-full bg-brand-panel border border-brand-border rounded px-2 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none"></textarea>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="saveOpenAISettings(false)" class="px-2 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded transition">Simpan</button>
+                    <button onclick="fetchOpenAIModelsFromSettings()" class="px-2 py-1 bg-brand-panel hover:bg-brand-border text-slate-200 rounded border border-brand-border transition">Fetch models dari key</button>
+                    <button onclick="saveOpenAISettings(true)" class="px-2 py-1 bg-red-600/80 hover:bg-red-600 text-white rounded transition">Hapus key</button>
+                </div>
+                <div id="openai-model-fetch-result" class="text-[11px] text-slate-500"></div>
             </div>
 
             <!-- Chat History Overlay -->
@@ -345,6 +368,7 @@
 
             // Initial refresh of workspace
             refreshWorkspace();
+            loadOpenAISettings();
             loadAvailableModels();
 
             // Restore active conversation session if saved
@@ -581,23 +605,103 @@
             }
         }
 
+        function toggleOpenAISettings() {
+            const pane = document.getElementById('openai-settings-pane');
+            pane.classList.toggle('hidden');
+            if (!pane.classList.contains('hidden')) loadOpenAISettings();
+            lucide.createIcons();
+        }
+
+        async function loadOpenAISettings() {
+            const status = document.getElementById('openai-status');
+            try {
+                const res = await fetch('/api/openai/settings');
+                if (!res.ok) throw new Error(await res.text());
+                const cfg = await res.json();
+                document.getElementById('openai-api-base').value = cfg.apiBase || 'https://api.openai.com/v1';
+                document.getElementById('openai-models').value = cfg.configuredModels || '';
+                document.getElementById('openai-api-key').value = '';
+                status.innerText = cfg.apiKeySet ? `API key tersimpan (${cfg.apiKeyMasked || 'masked'})` : 'API key durung disetel. Isi key banjur klik Simpan.';
+                status.className = cfg.apiKeySet ? 'text-[11px] text-emerald-400' : 'text-[11px] text-amber-400';
+            } catch (err) {
+                status.innerText = 'Gagal ngundhuh setelan OpenAI: ' + err.message;
+                status.className = 'text-[11px] text-red-400';
+            }
+        }
+
+        async function saveOpenAISettings(clearKey) {
+            const status = document.getElementById('openai-status');
+            status.innerText = 'Nyimpen setelan...';
+            status.className = 'text-[11px] text-slate-400';
+            try {
+                const res = await fetch('/api/openai/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        apiKey: document.getElementById('openai-api-key').value.trim(),
+                        apiBase: document.getElementById('openai-api-base').value.trim(),
+                        models: document.getElementById('openai-models').value.trim(),
+                        clearApiKey: clearKey
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await loadOpenAISettings();
+                await loadAvailableModels();
+                document.getElementById('openai-model-fetch-result').innerText = clearKey ? 'API key wis dibusak.' : 'Setelan disimpen.';
+            } catch (err) {
+                status.innerText = 'Gagal nyimpen: ' + err.message;
+                status.className = 'text-[11px] text-red-400';
+            }
+        }
+
+        async function fetchOpenAIModelsFromSettings() {
+            const result = document.getElementById('openai-model-fetch-result');
+            result.innerText = 'Nyoba fetch model saka endpoint...';
+            result.className = 'text-[11px] text-slate-400';
+            try {
+                const res = await fetch('/api/openai/models', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        apiKey: document.getElementById('openai-api-key').value.trim(),
+                        apiBase: document.getElementById('openai-api-base').value.trim()
+                    })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const models = await res.json();
+                const rawModels = (models || []).map(m => m.replace(/^openai\//, ''));
+                document.getElementById('openai-models').value = rawModels.join(',');
+                result.innerText = rawModels.length ? `Ketemu ${rawModels.length} model. Klik Simpan kanggo nyimpen daftar iki.` : 'Endpoint sukses, tapi ora ana model.';
+                result.className = rawModels.length ? 'text-[11px] text-emerald-400' : 'text-[11px] text-amber-400';
+                populateModelSelect(models || []);
+            } catch (err) {
+                result.innerText = 'Gagal fetch model: ' + err.message;
+                result.className = 'text-[11px] text-red-400';
+            }
+        }
+
+        function populateModelSelect(models) {
+            const select = document.getElementById('model-select');
+            const previous = select.value;
+            if (models && models.length > 0) {
+                select.innerHTML = '';
+                models.forEach(model => {
+                    const opt = document.createElement('option');
+                    opt.value = model;
+                    opt.innerText = model;
+                    select.appendChild(opt);
+                });
+                if (previous && models.includes(previous)) select.value = previous;
+            }
+        }
+
         // Fetch and populate available models dynamically
         async function loadAvailableModels() {
-            const select = document.getElementById('model-select');
             try {
                 const res = await fetch('/api/models');
                 if (!res.ok) throw new Error();
                 const models = await res.json();
-                
-                if (models && models.length > 0) {
-                    select.innerHTML = '';
-                    models.forEach(model => {
-                        const opt = document.createElement('option');
-                        opt.value = model;
-                        opt.innerText = model;
-                        select.appendChild(opt);
-                    });
-                }
+                populateModelSelect(models);
             } catch (err) {
                 console.error("Gagal ngundhuh daftar model:", err);
             }
@@ -1638,6 +1742,16 @@
                                     </div>
                                 </div>
                             `;
+                        } else if (quotaData.error) {
+                            detailsDiv.innerHTML = `
+                                <div class="bg-amber-950/30 border border-amber-900/50 p-3 rounded-xl flex items-center space-x-3 text-amber-300">
+                                    <i data-lucide="info" class="w-5 h-5 shrink-0"></i>
+                                    <div>
+                                        <div class="font-bold text-[11px] uppercase tracking-wider">Quota agy ora tersedia</div>
+                                        <div class="text-[10px] text-slate-400">${escapeHtml(quotaData.error)}</div>
+                                    </div>
+                                </div>
+                            `;
                         } else if (quotaData.groups && quotaData.groups.length > 0) {
                             let html = '<div class="space-y-3">';
                             quotaData.groups.forEach(g => {
@@ -1855,7 +1969,7 @@
                 if (!res.ok) throw new Error();
                 const data = await res.json();
                 const latest = data.tag_name;
-                const current = "v1.3.testing.1";
+                const current = "v1.3.testing.2";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 
@@ -1871,7 +1985,7 @@
                         dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
                         dot.title = "Aplikasi versi paling anyar";
                     }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.1).</span>`;
+                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (v1.3.testing.2).</span>`;
                     if (updateInst) updateInst.classList.add('hidden');
                 }
             } catch (err) {
@@ -1968,7 +2082,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.1</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.testing.2</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

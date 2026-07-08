@@ -2,17 +2,20 @@ package chat
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"mobile-agy/internal/auth"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"mobile-agy/internal/auth"
+	"time"
 )
 
 type ChatRequest struct {
@@ -63,18 +66,29 @@ type TranscriptLine struct {
 }
 
 type Service struct {
-	mu             sync.Mutex
-	activeChatCmds map[string]*exec.Cmd
+	mu                sync.Mutex
+	activeChatCmds    map[string]*exec.Cmd
+	activeChatCancels map[string]context.CancelFunc
 }
 
 func NewService() *Service {
 	return &Service{
-		activeChatCmds: make(map[string]*exec.Cmd),
+		activeChatCmds:    make(map[string]*exec.Cmd),
+		activeChatCancels: make(map[string]context.CancelFunc),
 	}
 }
 
+var HomeDirOverride string
+
+func getHomeDir() (string, error) {
+	if HomeDirOverride != "" {
+		return HomeDirOverride, nil
+	}
+	return os.UserHomeDir()
+}
+
 func (s *Service) getHistoryFilePath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err != nil {
 		return "", err
 	}
@@ -180,7 +194,7 @@ func (s *Service) GetHistory(activeWorkspaceDir string) ([]ChatHistoryItem, erro
 
 // GetHistoryDetail reads detail messages of a conversation from transcript.jsonl
 func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err != nil {
 		return ChatHistoryDetail{}, err
 	}
@@ -227,7 +241,7 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 			})
 		} else if line.Type == "PLANNER_RESPONSE" {
 			var sb strings.Builder
-			
+
 			if line.Thinking != "" {
 				sb.WriteString(`<details class="bg-brand-dark/40 border border-brand-border rounded-xl p-3 my-2 text-xs">
 <summary class="cursor-pointer font-mono font-semibold text-slate-400 hover:text-white transition flex items-center space-x-2 select-none">
@@ -240,12 +254,12 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 </details>
 `)
 			}
-			
+
 			for _, tc := range line.ToolCalls {
 				toolLabel := "Tool Execution"
 				iconColor := "text-brand-accent"
 				iconName := "play"
-				
+
 				if strings.Contains(tc.Name, "Read") || strings.Contains(tc.Name, "view_file") {
 					toolLabel = "Moco Berkas (Read)"
 					iconColor = "text-blue-400"
@@ -263,9 +277,9 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 					iconColor = "text-green-400"
 					iconName = "terminal"
 				}
-				
+
 				argsBytes, _ := json.MarshalIndent(tc.Arguments, "", "  ")
-				
+
 				sb.WriteString(fmt.Sprintf(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
 <summary class="cursor-pointer font-mono font-semibold text-slate-200 hover:text-white transition flex items-center justify-between select-none">
     <div class="flex items-center space-x-2">
@@ -281,11 +295,11 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 </details>
 `, iconName, iconColor, toolLabel, tc.Name, string(argsBytes)))
 			}
-			
+
 			if line.Content != "" {
 				sb.WriteString(line.Content)
 			}
-			
+
 			builtContent := sb.String()
 			if strings.TrimSpace(builtContent) != "" {
 				messages = append(messages, ChatMessage{
@@ -309,6 +323,11 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 
 // StartChat spawns a chat command and returns its stdout pipe
 func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspaceDir string) (*exec.Cmd, io.ReadCloser, error) {
+	if strings.HasPrefix(req.Model, "openai/") {
+		reader, err := s.StartOpenAIChat(ctx, &req, activeWorkspaceDir)
+		return nil, reader, err
+	}
+
 	args := []string{"--add-dir", activeWorkspaceDir}
 	if req.Model != "" {
 		args = append(args, "--model", req.Model)
@@ -364,8 +383,11 @@ func (s *Service) CleanupChat(convID string, cmd *exec.Cmd) {
 		return
 	}
 	s.mu.Lock()
-	if s.activeChatCmds[convID] == cmd {
+	if cmd != nil && s.activeChatCmds[convID] == cmd {
 		delete(s.activeChatCmds, convID)
+	}
+	if _, exists := s.activeChatCancels[convID]; exists {
+		delete(s.activeChatCancels, convID)
 	}
 	s.mu.Unlock()
 }
@@ -374,13 +396,243 @@ func (s *Service) CleanupChat(convID string, cmd *exec.Cmd) {
 func (s *Service) StopChat(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	stopped := false
 	cmd, exists := s.activeChatCmds[id]
 	if exists && cmd != nil && cmd.Process != nil {
 		_ = cmd.Process.Kill()
 		delete(s.activeChatCmds, id)
-		return true
+		stopped = true
 	}
-	return false
+
+	if cancel, exists := s.activeChatCancels[id]; exists {
+		cancel()
+		delete(s.activeChatCancels, id)
+		stopped = true
+	}
+
+	return stopped
+}
+
+// Helper methods to support OpenAI history saving
+func (s *Service) appendToHistory(entry HistoryEntry) error {
+	historyPath, err := s.getHistoryFilePath()
+	if err != nil {
+		return err
+	}
+	_ = os.MkdirAll(filepath.Dir(historyPath), 0755)
+
+	f, err := os.OpenFile(historyPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bytes, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(bytes, '\n'))
+	return err
+}
+
+func (s *Service) appendToTranscript(convID string, line TranscriptLine) error {
+	homeDir, err := getHomeDir()
+	if err != nil {
+		return err
+	}
+	id := filepath.Base(convID)
+	dir := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", id, ".system_generated", "logs")
+	_ = os.MkdirAll(dir, 0755)
+
+	transcriptPath := filepath.Join(dir, "transcript.jsonl")
+	f, err := os.OpenFile(transcriptPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	bytes, err := json.Marshal(line)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(bytes, '\n'))
+	return err
+}
+
+// StartOpenAIChat handles streaming OpenAI compatible completions
+func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeWorkspaceDir string) (io.ReadCloser, error) {
+	apiKey := os.Getenv("OPENAI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("OPENAI_API_KEY environment variable is not set")
+	}
+
+	apiBase := os.Getenv("OPENAI_API_BASE")
+	if apiBase == "" {
+		apiBase = "https://api.openai.com/v1"
+	}
+
+	modelName := strings.TrimPrefix(req.Model, "openai/")
+
+	// 1. Manage conversation ID
+	if req.Conversation == "" {
+		req.Conversation = fmt.Sprintf("openai-%d", time.Now().UnixNano())
+
+		title := req.Prompt
+		if len(title) > 50 {
+			title = title[:47] + "..."
+		}
+		_ = s.appendToHistory(HistoryEntry{
+			Display:        title,
+			Timestamp:      time.Now().Unix(),
+			Workspace:      activeWorkspaceDir,
+			ConversationID: req.Conversation,
+		})
+	}
+
+	// 2. Load context history
+	type OpenAIMessage struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	var messages []OpenAIMessage
+	detail, err := s.GetHistoryDetail(req.Conversation)
+	if err == nil {
+		for _, msg := range detail.Messages {
+			role := msg.Role
+			if role == "model" {
+				role = "assistant"
+			}
+			messages = append(messages, OpenAIMessage{
+				Role:    role,
+				Content: msg.Content,
+			})
+		}
+	}
+	// Append current prompt
+	messages = append(messages, OpenAIMessage{
+		Role:    "user",
+		Content: req.Prompt,
+	})
+
+	// 3. Prepare OpenAI request
+	reqBody, err := json.Marshal(map[string]any{
+		"model":    modelName,
+		"messages": messages,
+		"stream":   true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	openaiCtx, cancel := context.WithCancel(ctx)
+	s.mu.Lock()
+	s.activeChatCancels[req.Conversation] = cancel
+	s.mu.Unlock()
+
+	url := strings.TrimSuffix(apiBase, "/") + "/chat/completions"
+	httpReq, err := http.NewRequestWithContext(openaiCtx, "POST", url, bytes.NewReader(reqBody))
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{}
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		cancel()
+		return nil, fmt.Errorf("OpenAI API returned status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	pr, pw := io.Pipe()
+
+	go func() {
+		defer resp.Body.Close()
+		defer pw.Close()
+		defer cancel()
+
+		// Append the user query to transcript log immediately
+		_ = s.appendToTranscript(req.Conversation, TranscriptLine{
+			Source:    "user",
+			Type:      "USER_INPUT",
+			Content:   req.Prompt,
+			CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
+		})
+
+		var accumulatedContent strings.Builder
+		var accumulatedThinking strings.Builder
+		startedThought := false
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+
+			var chunk struct {
+				Choices []struct {
+					Delta struct {
+						Content          string `json:"content"`
+						ReasoningContent string `json:"reasoning_content"`
+					} `json:"delta"`
+				} `json:"choices"`
+			}
+			if err := json.Unmarshal([]byte(data), &chunk); err == nil && len(chunk.Choices) > 0 {
+				rc := chunk.Choices[0].Delta.ReasoningContent
+				c := chunk.Choices[0].Delta.Content
+
+				if rc != "" {
+					if !startedThought {
+						_, _ = pw.Write([]byte("▸ Thought\n"))
+						startedThought = true
+					}
+					accumulatedThinking.WriteString(rc)
+					lines := strings.Split(rc, "\n")
+					for _, l := range lines {
+						_, _ = pw.Write([]byte("  " + l + "\n"))
+					}
+				}
+
+				if c != "" {
+					if startedThought {
+						_, _ = pw.Write([]byte("\n"))
+						startedThought = false
+					}
+					accumulatedContent.WriteString(c)
+					_, _ = pw.Write([]byte(c))
+				}
+			}
+		}
+
+		if startedThought {
+			_, _ = pw.Write([]byte("\n"))
+		}
+
+		// Write the completed response to transcript log
+		_ = s.appendToTranscript(req.Conversation, TranscriptLine{
+			Source:    "model",
+			Type:      "PLANNER_RESPONSE",
+			Content:   accumulatedContent.String(),
+			CreatedAt: time.Now().Format("2006-01-02T15:04:05Z07:00"),
+			Thinking:  accumulatedThinking.String(),
+		})
+	}()
+
+	return pr, nil
 }
 
 // DeleteChat deletes chat brain directory and history entry
@@ -389,7 +641,7 @@ func (s *Service) DeleteChat(id string) error {
 	s.StopChat(id)
 
 	// 2. Remove brain dir
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err == nil {
 		brainDir := filepath.Join(homeDir, ".gemini", "antigravity-cli", "brain", filepath.Base(id))
 		_ = os.RemoveAll(brainDir)

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
@@ -15,6 +17,8 @@ import (
 )
 
 func main() {
+	loadEnv()
+
 	serverStartDir, err := filepath.Abs(".")
 	if err != nil {
 		fmt.Printf("Gagal mendapatkan path direktori saat ini: %v\n", err)
@@ -73,6 +77,8 @@ func main() {
 	http.HandleFunc("/api/workspaces/select", h.AuthMiddleware(h.HandleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", h.AuthMiddleware(h.HandleWorkspaceAdd))
 	http.HandleFunc("/api/models", h.AuthMiddleware(h.HandleModelsList))
+	http.HandleFunc("/api/openai/settings", h.AuthMiddleware(h.HandleOpenAISettings))
+	http.HandleFunc("/api/openai/models", h.AuthMiddleware(h.HandleOpenAIModels))
 	http.HandleFunc("/preview/", h.AuthMiddleware(h.HandlePreviewFile))
 	http.HandleFunc("/api/webhook", h.HandleGithubWebhook)
 	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
@@ -81,5 +87,32 @@ func main() {
 	log.Printf("Workspace root aktif: %s\n", workspaceSvc.ActiveWorkspaceDir())
 	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
 		log.Printf("Gagal nglakokake server: %v\n", err)
+	}
+}
+
+func loadEnv() {
+	file, err := os.Open(".env")
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
+				(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+				val = val[1 : len(val)-1]
+			}
+			if os.Getenv(key) == "" {
+				os.Setenv(key, val)
+			}
+		}
 	}
 }

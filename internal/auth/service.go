@@ -125,12 +125,25 @@ func (s *Service) GenerateRandomPassword(length int) string {
 	return string(bytes)
 }
 
+var HomeDirOverride string
+
+func getHomeDir() (string, error) {
+	if HomeDirOverride != "" {
+		return HomeDirOverride, nil
+	}
+	return os.UserHomeDir()
+}
+
 func FindAgyPath() string {
+	if p := os.Getenv("AGY_PATH"); p != "" {
+		return p
+	}
+
 	if p, err := exec.LookPath("agy"); err == nil {
 		return p
 	}
 
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err == nil {
 		p := filepath.Join(homeDir, ".local", "bin", "agy")
 		if _, err := os.Stat(p); err == nil {
@@ -151,7 +164,7 @@ func (s *Service) CheckOAuthTokenExists() bool {
 	bypass := s.bypassDynamicAuthCheck
 	s.mu.RUnlock()
 
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err != nil {
 		return false
 	}
@@ -202,7 +215,7 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 		_ = keyring.Delete("gemini", "antigravity")
 	}
 
-	homeDir, _ := os.UserHomeDir()
+	homeDir, _ := getHomeDir()
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 	_ = os.Remove(tokenPath)
 
@@ -397,7 +410,7 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 		_ = keyring.Delete("gemini", "antigravity")
 	}
 
-	homeDir, _ := os.UserHomeDir()
+	homeDir, _ := getHomeDir()
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 	_ = os.Remove(tokenPath)
 
@@ -494,7 +507,7 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 }
 
 func (s *Service) Logout() {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 		_ = os.Remove(tokenPath)
@@ -510,7 +523,7 @@ type SettingsStruct struct {
 }
 
 func (s *Service) GetGCPProject() string {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err != nil {
 		return ""
 	}
@@ -527,7 +540,7 @@ func (s *Service) GetGCPProject() string {
 }
 
 func (s *Service) GetAuthenticatedEmail() string {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err != nil {
 		return ""
 	}
@@ -744,7 +757,7 @@ func fetchEmailFromToken(accessToken string) (string, error) {
 }
 
 func (s *Service) GetAccountsPoolPath() string {
-	homeDir, _ := os.UserHomeDir()
+	homeDir, _ := getHomeDir()
 	return filepath.Join(homeDir, ".gemini", "antigravity-cli", "accounts_pool.json")
 }
 
@@ -862,7 +875,7 @@ func (s *Service) SwitchAccount(email string) error {
 	}
 
 	// Write dummy token file to signal we are logged in
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := getHomeDir()
 	if err == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
@@ -895,7 +908,7 @@ func (s *Service) DeleteAccount(email string) error {
 	// If the deleted account is the active one, log out of it
 	currentEmail := s.GetAuthenticatedEmail()
 	if currentEmail == email {
-		homeDir, err := os.UserHomeDir()
+		homeDir, err := getHomeDir()
 		if err == nil {
 			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 			_ = os.Remove(tokenPath)
@@ -905,4 +918,3 @@ func (s *Service) DeleteAccount(email string) error {
 
 	return nil
 }
-

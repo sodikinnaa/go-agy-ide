@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mobile-agy/internal/auth"
+	"mobile-agy/internal/chat"
+	"mobile-agy/internal/terminal"
+	"mobile-agy/internal/workspace"
 	"net/http"
 	"os"
 	"os/exec"
@@ -12,13 +16,10 @@ import (
 	"regexp"
 	"strings"
 	"time"
-	"mobile-agy/internal/auth"
-	"mobile-agy/internal/chat"
-	"mobile-agy/internal/terminal"
-	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.3.testing.1"
+const AppVersion = "v1.3.testing.2"
+
 var versionRegex = regexp.MustCompile(`v1\.3\.[0-9a-zA-Z.-]+`)
 
 type EmbeddedHTML struct {
@@ -94,11 +95,18 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			// 2. LAYER 2: Google Antigravity OAuth check
-			isPublicGoogleAPI := r.URL.Path == "/api/auth/start" || r.URL.Path == "/api/auth/submit" || r.URL.Path == "/api/auth/status"
+			// 2. LAYER 2: Google Antigravity OAuth check. OpenAI-compatible
+			// settings are allowed after password auth so users can configure an
+			// alternate AI provider without completing agy OAuth first.
+			isPublicGoogleAPI := r.URL.Path == "/api/auth/start" ||
+				r.URL.Path == "/api/auth/submit" ||
+				r.URL.Path == "/api/auth/status" ||
+				r.URL.Path == "/api/openai/settings" ||
+				r.URL.Path == "/api/openai/models"
 			isGoogleLoginPage := r.URL.Path == "/login"
+			isOpenAIConfigPage := r.URL.Path == "/"
 
-			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists()
+			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists() || os.Getenv("OPENAI_API_KEY") != ""
 
 			if !isGoogleAuthPassed {
 				if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicGoogleAPI && r.URL.Path != "/api/auth/logout" {
@@ -106,7 +114,7 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 					http.Error(w, "Unauthorized", http.StatusUnauthorized)
 					return
 				}
-				if !isPublicGoogleAPI && !isGoogleLoginPage {
+				if !isPublicGoogleAPI && !isGoogleLoginPage && !isOpenAIConfigPage {
 					http.Redirect(w, r, "/login", http.StatusFound)
 					return
 				}
@@ -213,13 +221,16 @@ func (h *Handler) HandleQuotaSummary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	quota, err := h.authSvc.GetQuotaSummary()
 	if err != nil {
-		log.Printf("[QUOTA ERROR] Gagal ngambil detail quota: %v\n", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("[QUOTA WARN] Detail quota resmi agy ora tersedia: %v\n", err)
+		_ = json.NewEncoder(w).Encode(auth.QuotaSummaryResponse{
+			Groups:    []auth.QuotaGroup{},
+			Exhausted: false,
+			Error:     "Detail quota mung kasedhiya kanggo login Google Antigravity (`agy`). Yen sampeyan nganggo OpenAI-compatible provider, cek pemakaian/quota saka dashboard provider masing-masing.",
+		})
 		return
 	}
 	_ = json.NewEncoder(w).Encode(quota)
 }
-
 
 // HandleAuthStart initiates Google OAuth flow via agy
 func (h *Handler) HandleAuthStart(w http.ResponseWriter, r *http.Request) {
@@ -565,7 +576,9 @@ Loop:
 		}
 	}
 
-	_ = cmd.Wait()
+	if cmd != nil {
+		_ = cmd.Wait()
+	}
 }
 
 // HandleChatStop stops running chat command
@@ -717,6 +730,64 @@ func (h *Handler) HandleModelsList(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(models)
 }
 
+// HandleOpenAISettings reads or saves OpenAI-compatible provider settings.
+func (h *Handler) HandleOpenAISettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	switch r.Method {
+	case http.MethodGet:
+		_ = json.NewEncoder(w).Encode(h.terminalSvc.GetOpenAISettings(false))
+	case http.MethodPost:
+		var req struct {
+			APIKey      string `json:"apiKey"`
+			APIBase     string `json:"apiBase"`
+			Models      string `json:"models"`
+			ClearAPIKey bool   `json:"clearApiKey"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if err := h.terminalSvc.SaveOpenAISettings(req.APIKey, req.APIBase, req.Models, req.ClearAPIKey); err != nil {
+			http.Error(w, "Gagal nyimpen setelan OpenAI: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(h.terminalSvc.GetOpenAISettings(false))
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// HandleOpenAIModels fetches models available for the configured or provided key.
+func (h *Handler) HandleOpenAIModels(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	apiKey := r.URL.Query().Get("apiKey")
+	apiBase := r.URL.Query().Get("apiBase")
+	if r.Method == http.MethodPost {
+		var req struct {
+			APIKey  string `json:"apiKey"`
+			APIBase string `json:"apiBase"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			apiKey = req.APIKey
+			apiBase = req.APIBase
+		}
+	}
+
+	models, err := h.terminalSvc.FetchOpenAIModels(apiKey, apiBase)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(models)
+}
+
 // HandleGithubWebhook runs webhook sync
 func (h *Handler) HandleGithubWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -798,7 +869,7 @@ type SwitchAccountRequest struct {
 // HandleGetAccountsPool returns the list of all pooled accounts and the active one
 func (h *Handler) HandleGetAccountsPool(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	// Automatically sync current account to pool if logged in
 	_ = h.authSvc.SyncCurrentAccountToPool()
 
@@ -814,7 +885,7 @@ func (h *Handler) HandleGetAccountsPool(w http.ResponseWriter, r *http.Request) 
 	}
 
 	activeEmail := h.authSvc.GetAuthenticatedEmail()
-	
+
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"accounts": emails,
 		"active":   activeEmail,
