@@ -590,15 +590,19 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 		return nil, fmt.Errorf("api returned status %d: %s", resp.StatusCode, string(respBytes))
 	}
 
-	type rawGroup struct {
-		GroupName         string  `json:"groupName"`
-		GroupNameSnake    string  `json:"group_name"`
-		GroupDescription  string  `json:"groupDescription"`
-		GroupDescSnake    string  `json:"group_description"`
-		RemainingFraction float32 `json:"remainingFraction"`
-		RemFractionSnake  float32 `json:"remaining_fraction"`
+	type rawBucket struct {
+		BucketID          string  `json:"bucketId"`
+		DisplayName       string  `json:"displayName"`
+		Window            string  `json:"window"`
 		ResetTime         string  `json:"resetTime"`
-		ResetTimeSnake    string  `json:"reset_time"`
+		Description       string  `json:"description"`
+		RemainingFraction float32 `json:"remainingFraction"`
+	}
+
+	type rawGroup struct {
+		DisplayName string      `json:"displayName"`
+		Description string      `json:"description"`
+		Buckets     []rawBucket `json:"buckets"`
 	}
 
 	var quotaResp struct {
@@ -609,31 +613,19 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 	}
 
 	res := &QuotaSummaryResponse{
-		Groups:    make([]QuotaGroup, len(quotaResp.Groups)),
+		Groups:    []QuotaGroup{},
 		Exhausted: false,
 	}
-	for i, g := range quotaResp.Groups {
-		name := g.GroupName
-		if name == "" {
-			name = g.GroupNameSnake
-		}
-		desc := g.GroupDescription
-		if desc == "" {
-			desc = g.GroupDescSnake
-		}
-		rem := g.RemainingFraction
-		if rem == 0 && g.RemFractionSnake != 0 {
-			rem = g.RemFractionSnake
-		}
-		reset := g.ResetTime
-		if reset == "" {
-			reset = g.ResetTimeSnake
-		}
-		res.Groups[i] = QuotaGroup{
-			GroupName:         name,
-			GroupDescription:  desc,
-			RemainingFraction: rem,
-			ResetTime:         reset,
+	for _, g := range quotaResp.Groups {
+		for _, b := range g.Buckets {
+			// Combine group display name and bucket display name for the UI label
+			name := fmt.Sprintf("%s (%s)", g.DisplayName, b.DisplayName)
+			res.Groups = append(res.Groups, QuotaGroup{
+				GroupName:         name,
+				GroupDescription:  b.Description,
+				RemainingFraction: b.RemainingFraction,
+				ResetTime:         b.ResetTime,
+			})
 		}
 	}
 	return res, nil

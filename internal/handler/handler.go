@@ -18,7 +18,7 @@ import (
 	"mobile-agy/internal/workspace"
 )
 
-const AppVersion = "v1.2.7"
+const AppVersion = "v1.2.8"
 var versionRegex = regexp.MustCompile(`v1\.2\.[0-9]+`)
 
 type EmbeddedHTML struct {
@@ -213,6 +213,7 @@ func (h *Handler) HandleQuotaSummary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	quota, err := h.authSvc.GetQuotaSummary()
 	if err != nil {
+		log.Printf("[QUOTA ERROR] Gagal ngambil detail quota: %v\n", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
