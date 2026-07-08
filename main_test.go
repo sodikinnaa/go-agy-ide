@@ -140,6 +140,45 @@ func TestHandleAuthStatus(t *testing.T) {
 	}
 }
 
+func TestHandleQuotaSummaryUnauthorized(t *testing.T) {
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	os.Setenv("PASSWORD", "")
+	authSvc.LoadPassword()
+	sessionToken := authSvc.InitSession()
+
+	// Temporarily simulate missing token
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("failed to get home dir: %v", err)
+	}
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+
+	originalExists := authSvc.CheckOAuthTokenExists()
+	backupPath := tokenPath + ".test_bak"
+	if originalExists {
+		err := os.Rename(tokenPath, backupPath)
+		if err != nil {
+			t.Fatalf("failed to backup token: %v", err)
+		}
+		defer func() {
+			_ = os.Rename(backupPath, tokenPath)
+		}()
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/quota", nil)
+	req.AddCookie(&http.Cookie{Name: "session_password", Value: sessionToken})
+	rr := httptest.NewRecorder()
+
+	handlerFunc := h.AuthMiddleware(h.HandleQuotaSummary)
+	handlerFunc.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rr.Code)
+	}
+}
+
 func TestHandleListFilesUnauthorized(t *testing.T) {
 	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
 	defer os.RemoveAll(tempDir)

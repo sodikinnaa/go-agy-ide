@@ -1,17 +1,21 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/zalando/go-keyring"
 )
 
 type Service struct {
@@ -474,3 +478,158 @@ func (s *Service) GetAuthenticatedEmail() string {
 	}
 	return ""
 }
+
+type QuotaGroup struct {
+	GroupName         string  `json:"groupName"`
+	GroupDescription  string  `json:"groupDescription"`
+	RemainingFraction float32 `json:"remainingFraction"`
+	ResetTime         string  `json:"resetTime"`
+}
+
+type QuotaSummaryResponse struct {
+	Groups    []QuotaGroup `json:"groups"`
+	Exhausted bool         `json:"exhausted"`
+	Error     string       `json:"error,omitempty"`
+}
+
+func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
+	if !s.CheckOAuthTokenExists() {
+		return nil, fmt.Errorf("user is not authenticated")
+	}
+
+	val, err := keyring.Get("gemini", "antigravity")
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve credentials from keyring: %w", err)
+	}
+
+	var kt struct {
+		Token struct {
+			AccessToken string `json:"access_token"`
+		} `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(val), &kt); err != nil {
+		return nil, fmt.Errorf("failed to parse keyring credentials: %w", err)
+	}
+
+	accessToken := kt.Token.AccessToken
+	if accessToken == "" {
+		return nil, fmt.Errorf("access token is empty in credentials")
+	}
+
+	project := s.GetGCPProject()
+
+	var resp *http.Response
+	var respBytes []byte
+
+	projectsToTry := []string{project}
+	if project != "" {
+		projectsToTry = append(projectsToTry, "")
+	}
+
+	var lastErr error
+	for _, proj := range projectsToTry {
+		url := "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+		bodyMap := map[string]string{
+			"project": proj,
+		}
+		bodyBytes, _ := json.Marshal(bodyMap)
+
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("User-Agent", "antigravity/cli/1.2.3")
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err = client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		respBytes, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode == http.StatusForbidden {
+			lastErr = fmt.Errorf("status 403 forbidden: %s", string(respBytes))
+			continue
+		}
+
+		// Success or other status code (like 429) found, break loop
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil && resp == nil {
+		return nil, fmt.Errorf("failed to request quota summary: %w", lastErr)
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return &QuotaSummaryResponse{
+			Groups:    []QuotaGroup{},
+			Exhausted: true,
+			Error:     "Resource has been exhausted (e.g. check quota).",
+		}, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("api returned status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	type rawGroup struct {
+		GroupName         string  `json:"groupName"`
+		GroupNameSnake    string  `json:"group_name"`
+		GroupDescription  string  `json:"groupDescription"`
+		GroupDescSnake    string  `json:"group_description"`
+		RemainingFraction float32 `json:"remainingFraction"`
+		RemFractionSnake  float32 `json:"remaining_fraction"`
+		ResetTime         string  `json:"resetTime"`
+		ResetTimeSnake    string  `json:"reset_time"`
+	}
+
+	var quotaResp struct {
+		Groups []rawGroup `json:"groups"`
+	}
+	if err := json.Unmarshal(respBytes, &quotaResp); err != nil {
+		return nil, fmt.Errorf("failed to parse quota response: %w", err)
+	}
+
+	res := &QuotaSummaryResponse{
+		Groups:    make([]QuotaGroup, len(quotaResp.Groups)),
+		Exhausted: false,
+	}
+	for i, g := range quotaResp.Groups {
+		name := g.GroupName
+		if name == "" {
+			name = g.GroupNameSnake
+		}
+		desc := g.GroupDescription
+		if desc == "" {
+			desc = g.GroupDescSnake
+		}
+		rem := g.RemainingFraction
+		if rem == 0 && g.RemFractionSnake != 0 {
+			rem = g.RemFractionSnake
+		}
+		reset := g.ResetTime
+		if reset == "" {
+			reset = g.ResetTimeSnake
+		}
+		res.Groups[i] = QuotaGroup{
+			GroupName:         name,
+			GroupDescription:  desc,
+			RemainingFraction: rem,
+			ResetTime:         reset,
+		}
+	}
+	return res, nil
+}
+

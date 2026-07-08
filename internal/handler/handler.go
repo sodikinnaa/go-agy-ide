@@ -197,6 +197,18 @@ func (h *Handler) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleQuotaSummary retrieves user quota summary details
+func (h *Handler) HandleQuotaSummary(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	quota, err := h.authSvc.GetQuotaSummary()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = json.NewEncoder(w).Encode(quota)
+}
+
+
 // HandleAuthStart initiates Google OAuth flow via agy
 func (h *Handler) HandleAuthStart(w http.ResponseWriter, r *http.Request) {
 	url, err := h.authSvc.StartGoogleAuth(h.workspaceSvc.ActiveWorkspaceDir())

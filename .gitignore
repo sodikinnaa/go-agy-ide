@@ -20,3 +20,6 @@ debug/
 mobile-ide/
 *.log
 .env
+
+# Scratch folder
+scratch/
