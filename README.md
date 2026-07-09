@@ -49,7 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.
 Yen pengin install versi/tag tartamtu sing wis dirilis, undhuh installer dhisik banjur lebokake tag-e:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh -o install.sh
-bash install.sh v1.3.8
+bash install.sh v1.3.9
 ```
 Utawa nganggo environment variable:
 ```bash
@@ -250,7 +250,7 @@ Sawise instalasi, njenengan bisa nggunakake perintah global `agy-mobile` saka ng
   ```
 * **Nganyari utawa downgrade menyang versi tartamtu**:
   ```bash
-  agy-mobile update v1.3.8
+  agy-mobile update v1.3.9
   agy-mobile install-version v1.3.5
   ```
 * **Mbusak instalasi (uninstall) Mobile IDE**:
@@ -268,7 +268,7 @@ Yen ana versi anyar utawa update, saliyane nganggo `agy-mobile update`, njenenga
 ```
 Kanggo target versi spesifik:
 ```bash
-./update.sh v1.3.8
+./update.sh v1.3.9
 ./update.sh v1.3.5
 ```
 *Script iki bakal otomatis ngundhuh installer paling anyar saka GitHub, nganyari binary program, lan miwiti maneh server **tanpa ngowahi port, sandi akses, utawa setelan OpenAI-compatible** sing wis disimpen ing file `.env`.*

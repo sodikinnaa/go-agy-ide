@@ -146,8 +146,8 @@ func TestHandleAuthStatus(t *testing.T) {
 	if !ok {
 		t.Errorf("expected 'version' key in response")
 	}
-	if versionVal != "v1.3.8" {
-		t.Errorf("expected version to be 'v1.3.8', got %v", versionVal)
+	if versionVal != handler.AppVersion {
+		t.Errorf("expected version to be '%v', got %v", handler.AppVersion, versionVal)
 	}
 }
 

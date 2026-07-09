@@ -384,7 +384,7 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		}
 		return nil, nil, err
 	}
-	cmd.Stderr = cmd.Stdout
+	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
 		if convID != "" {
