@@ -1946,6 +1946,51 @@
         function closeQuotaModal() {
             cancelPoolAddFlow();
             document.getElementById('quota-modal').classList.add('hidden');
+            const statusDiv = document.getElementById('pwd-update-status');
+            if (statusDiv) statusDiv.classList.add('hidden');
+            const pwdInput = document.getElementById('new-security-pwd');
+            if (pwdInput) pwdInput.value = "";
+        }
+
+        async function updateSecurityPassword() {
+            const pwdInput = document.getElementById('new-security-pwd');
+            const statusDiv = document.getElementById('pwd-update-status');
+            const btn = document.getElementById('btn-update-pwd');
+            const newPwd = pwdInput.value;
+
+            btn.disabled = true;
+            statusDiv.classList.remove('hidden', 'text-green-400', 'text-red-400');
+            statusDiv.classList.add('text-slate-400');
+            statusDiv.innerText = "Nyimpen sandi...";
+
+            try {
+                const res = await fetch('/api/auth/pwd/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ new_password: newPwd })
+                });
+
+                if (res.ok) {
+                    statusDiv.classList.remove('text-slate-400');
+                    statusDiv.classList.add('text-green-400');
+                    statusDiv.innerText = "Sandi keamanan kasil dianyari!";
+                    pwdInput.value = "";
+                    setTimeout(() => {
+                        statusDiv.classList.add('hidden');
+                    }, 3000);
+                } else {
+                    const errMsg = await res.text();
+                    statusDiv.classList.remove('text-slate-400');
+                    statusDiv.classList.add('text-red-400');
+                    statusDiv.innerText = "Gagal: " + errMsg;
+                }
+            } catch (err) {
+                statusDiv.classList.remove('text-slate-400');
+                statusDiv.classList.add('text-red-400');
+                statusDiv.innerText = "Gagal komunikasi karo server";
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         // --- Update & Webhook Modal Utilities ---
@@ -1987,7 +2032,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.0";
+                const current = "v1.4.1";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -2214,6 +2259,22 @@
                 <!-- Limits/Quota info dynamically loaded -->
                 <div id="quota-details" class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2.5">
                     <!-- Loading/Quota details here -->
+                </div>
+
+                <!-- Sandi Keamanan (Ubah Password) -->
+                <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-2">
+                    <div class="font-bold text-slate-200 text-[11px] uppercase tracking-wider flex items-center space-x-1.5">
+                        <i data-lucide="key" class="w-3.5 h-3.5 text-brand-accent"></i>
+                        <span>Ubah Sandi Keamanan</span>
+                    </div>
+                    <p class="text-[10px] text-slate-500">Kosongake sandi yen kepengin mateni kunci sandi login (login tanpa sandi).</p>
+                    <div class="flex space-x-1">
+                        <input type="password" id="new-security-pwd" placeholder="Sandi anyar..." class="flex-1 bg-brand-dark border border-brand-border rounded-lg py-1 px-2.5 text-[10px] text-white focus:outline-none focus:border-brand-500 transition duration-200 font-mono">
+                        <button onclick="updateSecurityPassword()" id="btn-update-pwd" class="py-1 px-2.5 bg-brand-accent hover:bg-purple-700 text-white rounded-lg text-[10px] font-semibold transition">
+                            Simpen
+                        </button>
+                    </div>
+                    <div id="pwd-update-status" class="hidden text-[9px] text-center pt-0.5"></div>
                 </div>
 
                 <!-- Quick Actions -->

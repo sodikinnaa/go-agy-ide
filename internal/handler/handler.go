@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.4.0"
+const AppVersion = "v1.4.1"
 
 var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
 
@@ -102,7 +102,8 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				r.URL.Path == "/api/auth/submit" ||
 				r.URL.Path == "/api/auth/status" ||
 				r.URL.Path == "/api/openai/settings" ||
-				r.URL.Path == "/api/openai/models"
+				r.URL.Path == "/api/openai/models" ||
+				r.URL.Path == "/api/auth/pwd/update"
 			isGoogleLoginPage := r.URL.Path == "/login"
 			isOpenAIConfigPage := r.URL.Path == "/"
 
@@ -203,6 +204,33 @@ func (h *Handler) HandlePasswordAuth(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Sukses mlebu"))
+}
+
+// HandlePasswordUpdate updates the security login password
+func (h *Handler) HandlePasswordUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	newPwd := r.FormValue("new_password")
+	if newPwd == "" {
+		var req struct {
+			NewPassword string `json:"new_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			newPwd = req.NewPassword
+		}
+	}
+
+	err := h.authSvc.SaveNewPassword(newPwd)
+	if err != nil {
+		http.Error(w, "Gagal nyimpen sandi anyar: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte("Sandi keamanan kasil dianyari"))
 }
 
 // HandleAuthStatus gets Google OAuth authentication status

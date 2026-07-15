@@ -970,3 +970,46 @@ func (s *Service) DeleteAccount(email string) error {
 
 	return nil
 }
+
+func (s *Service) SaveNewPassword(newPwd string) error {
+	s.mu.Lock()
+	s.secretPassword = newPwd
+	s.mu.Unlock()
+
+	// 1. Save to password.txt
+	configPath := filepath.Join(s.serverStartDir, "password.txt")
+	if err := os.WriteFile(configPath, []byte(newPwd), 0600); err != nil {
+		log.Printf("[SECURITY] Gagal nulis sandi anyar menyang %s: %v\n", configPath, err)
+	}
+
+	// 2. Also update in .env (to persist it for restarts if env is used)
+	envPath := filepath.Join(s.serverStartDir, ".env")
+	if _, err := os.Stat(envPath); err == nil {
+		// Read env file, replace PASSWORD=... with new password
+		data, readErr := os.ReadFile(envPath)
+		if readErr == nil {
+			lines := strings.Split(string(data), "\n")
+			updated := false
+			for i, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "PASSWORD=") {
+					lines[i] = fmt.Sprintf("PASSWORD=%q", newPwd)
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				lines = append(lines, fmt.Sprintf("PASSWORD=%q", newPwd))
+			}
+			_ = os.WriteFile(envPath, []byte(strings.Join(lines, "\n")), 0600)
+		}
+	} else {
+		// If .env doesn't exist, create it with the PASSWORD env
+		_ = os.WriteFile(envPath, []byte(fmt.Sprintf("PASSWORD=%q\n", newPwd)), 0600)
+	}
+
+	// Also make sure to update OS environment variable PASSWORD
+	os.Setenv("PASSWORD", newPwd)
+
+	return nil
+}
