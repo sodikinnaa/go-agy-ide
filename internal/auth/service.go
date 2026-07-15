@@ -225,12 +225,11 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 
 	agyPath := FindAgyPath()
 	var cmd *exec.Cmd
-	useDirect := true
+	useDirect := false
 
-	if os.Getenv("FORCE_DIRECT_AUTH") == "false" {
-		if _, err := exec.LookPath("script"); err == nil {
-			useDirect = false
-		}
+	if _, err := exec.LookPath("script"); err != nil || os.Getenv("FORCE_DIRECT_AUTH") == "true" {
+		log.Printf("[AUTH] 'script' utility not found or forced direct. Using direct command execution.")
+		useDirect = true
 	}
 
 	if useDirect {

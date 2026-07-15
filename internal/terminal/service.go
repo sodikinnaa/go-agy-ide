@@ -253,9 +253,30 @@ func (s *Service) GetModelsList() ([]string, error) {
 
 	if hasToken {
 		agyPath := auth.FindAgyPath()
-		cmdDirect := exec.Command(agyPath, "models")
-		cmdDirect.Env = os.Environ()
-		outputBytes, err := cmdDirect.Output()
+		var outputBytes []byte
+		var err error
+
+		useDirect := false
+		if _, lookErr := exec.LookPath("script"); lookErr != nil {
+			useDirect = true
+		}
+
+		if useDirect {
+			cmdDirect := exec.Command(agyPath, "models")
+			cmdDirect.Env = os.Environ()
+			outputBytes, err = cmdDirect.Output()
+		} else {
+			cmdStr := fmt.Sprintf("%s models", agyPath)
+			cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
+			cmd.Env = os.Environ()
+			outputBytes, err = cmd.Output()
+
+			if err != nil {
+				cmdDirect := exec.Command(agyPath, "models")
+				cmdDirect.Env = os.Environ()
+				outputBytes, err = cmdDirect.Output()
+			}
+		}
 
 		if err == nil {
 			lines := strings.Split(string(outputBytes), "\n")
