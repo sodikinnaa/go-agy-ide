@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -239,45 +240,35 @@ func (s *Service) FetchOpenAIModels(apiKey, apiBase string) ([]string, error) {
 
 // GetModelsList fetches available models from agy CLI or falls back to defaults
 func (s *Service) GetModelsList() ([]string, error) {
-	agyPath := auth.FindAgyPath()
-	var outputBytes []byte
-	var err error
+	var models []string
 
-	useDirect := false
-	if _, lookErr := exec.LookPath("script"); lookErr != nil {
-		useDirect = true
-	}
-
-	if useDirect {
-		cmdDirect := exec.Command(agyPath, "models")
-		cmdDirect.Env = os.Environ()
-		outputBytes, err = cmdDirect.Output()
-	} else {
-		cmdStr := fmt.Sprintf("%s models", agyPath)
-		cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
-		cmd.Env = os.Environ()
-		outputBytes, err = cmd.Output()
-
-		if err != nil {
-			cmdDirect := exec.Command(agyPath, "models")
-			cmdDirect.Env = os.Environ()
-			outputBytes, err = cmdDirect.Output()
+	hasToken := false
+	homeDir, errToken := os.UserHomeDir()
+	if errToken == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if _, errStat := os.Stat(tokenPath); errStat == nil {
+			hasToken = true
 		}
 	}
 
-	var models []string
+	if hasToken {
+		agyPath := auth.FindAgyPath()
+		cmdDirect := exec.Command(agyPath, "models")
+		cmdDirect.Env = os.Environ()
+		outputBytes, err := cmdDirect.Output()
 
-	if err == nil {
-		lines := strings.Split(string(outputBytes), "\n")
-		for _, line := range lines {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "" {
-				continue
+		if err == nil {
+			lines := strings.Split(string(outputBytes), "\n")
+			for _, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					continue
+				}
+				if strings.Contains(trimmed, "Fetching") || strings.Contains(trimmed, "⠋") || strings.Contains(trimmed, "⠙") || strings.Contains(trimmed, "⠹") || strings.Contains(trimmed, "⠸") || strings.Contains(trimmed, "⠼") || strings.Contains(trimmed, "⠴") || strings.Contains(trimmed, "⠦") || strings.Contains(trimmed, "⠧") || strings.Contains(trimmed, "⠇") || strings.Contains(trimmed, "⠏") {
+					continue
+				}
+				models = append(models, trimmed)
 			}
-			if strings.Contains(trimmed, "Fetching") || strings.Contains(trimmed, "⠋") || strings.Contains(trimmed, "⠙") || strings.Contains(trimmed, "⠹") || strings.Contains(trimmed, "⠸") || strings.Contains(trimmed, "⠼") || strings.Contains(trimmed, "⠴") || strings.Contains(trimmed, "⠦") || strings.Contains(trimmed, "⠧") || strings.Contains(trimmed, "⠇") || strings.Contains(trimmed, "⠏") {
-				continue
-			}
-			models = append(models, trimmed)
 		}
 	}
 
