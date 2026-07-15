@@ -438,11 +438,11 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 				waitErr = fmt.Errorf("agy authentication failed: %w", err)
 			}
 		}
-	case <-time.After(15 * time.Second):
+	case <-time.After(60 * time.Second):
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		waitErr = fmt.Errorf("agy authentication timeout (15s)")
+		waitErr = fmt.Errorf("agy authentication timeout (60s)")
 	}
 
 	if waitErr != nil {
