@@ -18,7 +18,7 @@ resolve_latest_version() {
         printf '%s\n' "$tags" | head -n 1
         return
     fi
-    echo "v1.3.9"
+    echo "v1.4.0"
 }
 
 REQUESTED_VERSION="${1:-${VERSION:-}}"
@@ -260,7 +260,7 @@ case "\$1" in
     install-version)
         if [ -z "\$2" ]; then
             echo "Usage: agy-mobile install-version <tag>"
-            echo "Example: agy-mobile install-version v1.3.9"
+            echo "Example: agy-mobile install-version v1.4.0"
             exit 1
         fi
         TARGET_VERSION="\$2"
