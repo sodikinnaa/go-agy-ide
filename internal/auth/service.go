@@ -455,6 +455,20 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 
 	// Success! Read the newly generated token from the keyring
 	newVal, err := keyring.Get("gemini", "antigravity")
+	if err != nil {
+		// Fallback: read from file directly in headless environment
+		homeDir, pathErr := getHomeDir()
+		if pathErr == nil {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
+				val := string(fileData)
+				if val != "" && val != "keychain-authenticated-dummy-token" {
+					newVal = val
+					err = nil
+				}
+			}
+		}
+	}
 	if err == nil && newVal != "" {
 		// Sync this new token to the pool
 		var kt struct {
@@ -493,13 +507,23 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 
 	// Restore original active keyring value!
 	if backupErr == nil && backupVal != "" {
-		_ = keyring.Set("gemini", "antigravity", backupVal)
-		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		setErr := keyring.Set("gemini", "antigravity", backupVal)
+		if setErr != nil {
+			// Headless fallback
+			_ = os.WriteFile(tokenPath, []byte(backupVal), 0600)
+		} else {
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
 	} else {
 		// If there was no original backup, keep the new token active
 		if err == nil && newVal != "" {
-			_ = keyring.Set("gemini", "antigravity", newVal)
-			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			setErr := keyring.Set("gemini", "antigravity", newVal)
+			if setErr != nil {
+				// Headless fallback
+				_ = os.WriteFile(tokenPath, []byte(newVal), 0600)
+			} else {
+				_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			}
 		}
 	}
 
@@ -601,7 +625,17 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 
 	val, err := keyring.Get("gemini", "antigravity")
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve credentials from keyring: %w", err)
+		// Fallback: read from file directly in headless environment
+		homeDir, pathErr := getHomeDir()
+		if pathErr == nil {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
+				val = string(fileData)
+			}
+		}
+		if val == "" {
+			return nil, fmt.Errorf("failed to retrieve credentials from keyring: %w", err)
+		}
 	}
 
 	var kt struct {
@@ -610,7 +644,7 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 		} `json:"token"`
 	}
 	if err := json.Unmarshal([]byte(val), &kt); err != nil {
-		return nil, fmt.Errorf("failed to parse keyring credentials: %w", err)
+		return nil, fmt.Errorf("failed to parse credentials: %w", err)
 	}
 
 	accessToken := kt.Token.AccessToken
@@ -794,7 +828,17 @@ func (s *Service) SyncCurrentAccountToPool() error {
 	// 1. Get current keyring value
 	val, err := keyring.Get("gemini", "antigravity")
 	if err != nil {
-		return nil // Not logged in yet
+		// Fallback: read from file directly in headless environment
+		homeDir, pathErr := getHomeDir()
+		if pathErr == nil {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
+				val = string(fileData)
+			}
+		}
+		if val == "" || val == "keychain-authenticated-dummy-token" {
+			return nil // Not logged in yet
+		}
 	}
 
 	// 2. Parse token
@@ -871,7 +915,15 @@ func (s *Service) SwitchAccount(email string) error {
 	// Set active keyring
 	err = keyring.Set("gemini", "antigravity", targetVal)
 	if err != nil {
-		return fmt.Errorf("failed to write to keyring: %w", err)
+		// Keyring write failed. In headless environment, write the real token directly to the file fallback!
+		homeDir, _ := getHomeDir()
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+		if fileErr := os.WriteFile(tokenPath, []byte(targetVal), 0600); fileErr != nil {
+			return fmt.Errorf("failed to write to keyring and token file fallback: %v (keyring err: %w)", fileErr, err)
+		}
+		log.Printf("[AUTH] Keyring write failed, fallback wrote real token to %s", tokenPath)
+		return nil
 	}
 
 	// Write dummy token file to signal we are logged in
