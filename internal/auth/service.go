@@ -564,6 +564,35 @@ func (s *Service) GetGCPProject() string {
 }
 
 func (s *Service) GetAuthenticatedEmail() string {
+	// 1. Try to read active token from keyring / fallback file
+	var activeToken string
+	val, err := keyring.Get("gemini", "antigravity")
+	if err == nil && val != "" {
+		activeToken = val
+	} else {
+		// Try fallback file
+		homeDir, _ := getHomeDir()
+		if homeDir != "" {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			data, err := os.ReadFile(tokenPath)
+			if err == nil {
+				activeToken = string(data)
+			}
+		}
+	}
+
+	// 2. If we have a token, look it up in the accounts pool
+	if activeToken != "" && activeToken != "keychain-authenticated-dummy-token" {
+		pool, err := s.LoadAccountsPool()
+		if err == nil {
+			for _, entry := range pool {
+				if entry.KeyringValue == activeToken {
+					return entry.Email
+				}
+			}
+		}
+	}
+
 	homeDir, err := getHomeDir()
 	if err != nil {
 		return ""
