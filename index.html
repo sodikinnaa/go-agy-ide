@@ -169,8 +169,19 @@
                 <button onclick="insertCode('&amp;&amp;')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">&amp;&amp;</button>
             </div>
             <!-- Editor Target -->
-            <div class="flex-1 relative overflow-hidden">
+            <div class="flex-1 relative overflow-hidden flex flex-col">
                 <textarea id="editor-textarea" class="hidden"></textarea>
+                <!-- Image Preview Container -->
+                <div id="image-preview-container" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-brand-dark/40 overflow-auto p-4 z-20">
+                    <img id="image-preview" class="max-w-full max-h-[85%] object-contain rounded border border-brand-border bg-slate-900/50 shadow-lg" alt="Preview" />
+                    <div class="mt-3 text-xs text-slate-400 font-mono bg-brand-panel border border-brand-border px-3 py-1.5 rounded-full flex items-center space-x-2">
+                        <span id="image-preview-info">0x0 px</span>
+                        <span class="text-slate-600">|</span>
+                        <a id="image-preview-download" href="#" target="_blank" class="text-brand-accent hover:underline flex items-center space-x-1">
+                            <i data-lucide="download" class="w-3.5 h-3.5 inline"></i><span>Download</span>
+                        </a>
+                    </div>
+                </div>
             </div>
         </section>
 
@@ -265,18 +276,23 @@
 
         <!-- Extra Pane: Terminal / Output Console -->
         <section id="panel-terminal" class="w-full md:w-80 bg-brand-dark/95 border-l border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
-            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0">
-                <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Terminal Console</span>
-                <button onclick="clearTerminal()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear console">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                </button>
+            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
+                <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
+                <div class="flex items-center space-x-1" id="terminal-actions">
+                    <button onclick="clearTerminal()" id="btn-clear-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear console">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="toggleMinimizeTerminal(event)" id="btn-minimize-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Minimize Terminal">
+                        <i data-lucide="minus" class="w-4 h-4"></i>
+                    </button>
+                </div>
             </div>
             <!-- Terminal Output -->
             <div id="terminal-output" class="flex-1 overflow-y-auto p-4 code-font text-xs text-slate-300 space-y-1 bg-black">
                 <div>$ Welcome to the mobile developer terminal console.</div>
             </div>
             <!-- Quick Commands Bar -->
-            <div class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
+            <div id="terminal-quick-cmds" class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
                 <span class="text-[10px] text-slate-500 self-center mr-1 font-semibold uppercase">Quick:</span>
                 <button onclick="executeCommand('agy-mobile status')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status server Mobile IDE">
                     agy-mobile status
@@ -286,9 +302,6 @@
                 </button>
                 <button onclick="executeCommand('agy-mobile logs')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco log otentikasi pungkasan">
                     agy-mobile logs
-                </button>
-                <button onclick="executeCommand('cat password.txt')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco password keamanan">
-                    cat password.txt
                 </button>
                 <button onclick="executeCommand('agy-mobile update')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Update Mobile IDE menyang versi paling anyar">
                     agy-mobile update
@@ -343,7 +356,7 @@
         let activeFilePath = "";
         let currentTab = "code";
         let lastWorkspaceFilesJSON = "";
-        let collapsedFolders = {};
+        let expandedFolders = {};
 
         // Initialize Lucide icons
         lucide.createIcons();
@@ -382,6 +395,30 @@
                 refreshWorkspace(true);
             }, 2000);
             
+            // Setup listeners for responsive and reliable chat submission
+            const chatInput = document.getElementById('chat-input');
+            const chatSendBtn = document.getElementById('chat-send-btn');
+
+            if (chatInput && chatSendBtn) {
+                // 1. Submit on Enter (without Shift)
+                chatInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendPrompt();
+                    }
+                });
+
+                // 2. Submit on mousedown / touchstart to prevent keyboard layout shift from canceling click
+                const triggerChatSubmit = (e) => {
+                    if (!activeChatAbortController) {
+                        e.preventDefault();
+                        sendPrompt();
+                    }
+                };
+                chatSendBtn.addEventListener('mousedown', triggerChatSubmit);
+                chatSendBtn.addEventListener('touchstart', triggerChatSubmit);
+            }
+
             // Set up responsive tabs
             adjustLayoutForViewport();
         });
@@ -505,7 +542,7 @@
 
         // Toggle folder collapsible state
         function toggleFolder(path) {
-            collapsedFolders[path] = !collapsedFolders[path];
+            expandedFolders[path] = !expandedFolders[path];
             refreshWorkspace();
         }
 
@@ -535,8 +572,8 @@
                 icon.className = "w-4 h-4 shrink-0 text-slate-400";
                 
                 if (child.isDir) {
-                    const isCollapsed = collapsedFolders[child.path];
-                    icon.setAttribute('data-lucide', isCollapsed ? 'folder' : 'folder-open');
+                    const isExpanded = expandedFolders[child.path];
+                    icon.setAttribute('data-lucide', isExpanded ? 'folder-open' : 'folder');
                     icon.classList.add('text-yellow-500');
                 } else {
                     icon.setAttribute('data-lucide', 'file-text');
@@ -565,7 +602,7 @@
                 
                 container.appendChild(row);
 
-                if (child.isDir && !collapsedFolders[child.path]) {
+                if (child.isDir && expandedFolders[child.path]) {
                     renderTree(child, depth + 1, container);
                 }
             });
@@ -710,27 +747,67 @@
         // Open a file
         async function openFile(path) {
             try {
-                const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-                if (!res.ok) throw new Error('Gagal mbukak file');
-                const content = await res.text();
+                const lowerPath = path.toLowerCase();
+                const isImage = lowerPath.endsWith('.png') || 
+                                lowerPath.endsWith('.jpg') || 
+                                lowerPath.endsWith('.jpeg') || 
+                                lowerPath.endsWith('.gif') || 
+                                lowerPath.endsWith('.svg') || 
+                                lowerPath.endsWith('.webp') || 
+                                lowerPath.endsWith('.ico');
                 
                 activeFilePath = path;
                 document.getElementById('active-file-label').innerText = path.split('/').pop();
                 document.getElementById('active-file-label').title = path;
-
-                // Detect mode
-                let mode = 'text/plain';
-                if (path.endsWith('.go')) mode = 'go';
-                else if (path.endsWith('.js')) mode = 'javascript';
-                else if (path.endsWith('.json')) mode = 'javascript';
-                else if (path.endsWith('.py')) mode = 'python';
-                else if (path.endsWith('.html')) mode = 'htmlmixed';
-                else if (path.endsWith('.css')) mode = 'css';
-
-                editorInstance.setOption('mode', mode);
-                editorInstance.setValue(content);
-                editorInstance.refresh();
-
+                
+                const imgContainer = document.getElementById('image-preview-container');
+                const imgElement = document.getElementById('image-preview');
+                const imgInfo = document.getElementById('image-preview-info');
+                const imgDownload = document.getElementById('image-preview-download');
+                const cmElement = document.querySelector('.CodeMirror');
+                
+                if (isImage) {
+                    // Hide CodeMirror if initialized
+                    if (cmElement) cmElement.style.display = 'none';
+                    
+                    // Show Image Preview
+                    imgContainer.classList.remove('hidden');
+                    const imgUrl = `/preview/${path}`;
+                    imgElement.src = imgUrl;
+                    imgDownload.href = imgUrl;
+                    imgDownload.download = path.split('/').pop();
+                    
+                    imgElement.onload = function() {
+                        imgInfo.innerText = `${this.naturalWidth} x ${this.naturalHeight} px`;
+                    };
+                    imgElement.onerror = function() {
+                        imgInfo.innerText = 'Gagal memuat gambar';
+                    };
+                } else {
+                    // Hide Image Preview
+                    imgContainer.classList.add('hidden');
+                    
+                    // Show CodeMirror
+                    if (cmElement) cmElement.style.display = '';
+                    
+                    const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+                    if (!res.ok) throw new Error('Gagal mbukak file');
+                    const content = await res.text();
+                    
+                    // Detect mode
+                    let mode = 'text/plain';
+                    if (path.endsWith('.go')) mode = 'go';
+                    else if (path.endsWith('.js')) mode = 'javascript';
+                    else if (path.endsWith('.json')) mode = 'javascript';
+                    else if (path.endsWith('.py')) mode = 'python';
+                    else if (path.endsWith('.html')) mode = 'htmlmixed';
+                    else if (path.endsWith('.css')) mode = 'css';
+                    
+                    editorInstance.setOption('mode', mode);
+                    editorInstance.setValue(content);
+                    editorInstance.refresh();
+                }
+                
                 // Switch to Code Tab on mobile
                 switchTab('code');
             } catch (err) {
@@ -742,6 +819,20 @@
         async function saveActiveFile() {
             if (!activeFilePath) {
                 alert('Mbukak file dhisik sakdurunge nyimpen!');
+                return;
+            }
+            
+            const lowerPath = activeFilePath.toLowerCase();
+            const isImage = lowerPath.endsWith('.png') || 
+                            lowerPath.endsWith('.jpg') || 
+                            lowerPath.endsWith('.jpeg') || 
+                            lowerPath.endsWith('.gif') || 
+                            lowerPath.endsWith('.svg') || 
+                            lowerPath.endsWith('.webp') || 
+                            lowerPath.endsWith('.ico');
+            
+            if (isImage) {
+                alert('File gambar ora bisa diowahi langsung saka editor text!');
                 return;
             }
 
@@ -1038,13 +1129,19 @@
         let activeChatAbortController = null;
 
         async function sendPrompt(e) {
-            e.preventDefault();
+            if (e) e.preventDefault();
+            if (activeChatAbortController) return;
+
             const input = document.getElementById('chat-input');
             const promptVal = input.value.trim();
             if (!promptVal) return;
 
             input.value = "";
             appendChatMessage('user', promptVal, false);
+            
+            if (window.innerWidth >= 768) {
+                input.focus();
+            }
 
             const sendBtn = document.getElementById('chat-send-btn');
             const stopBtn = document.getElementById('chat-stop-btn');
@@ -1251,6 +1348,84 @@
         function clearTerminal() {
             document.getElementById('terminal-output').innerHTML = '<div>$ Console cleared.</div>';
         }
+
+        function toggleMinimizeTerminal(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            const panel = document.getElementById('panel-terminal');
+            const output = document.getElementById('terminal-output');
+            const quickCmds = document.getElementById('terminal-quick-cmds');
+            const runForm = document.getElementById('terminal-form').parentNode;
+            const title = document.getElementById('terminal-title');
+            const clearBtn = document.getElementById('btn-clear-terminal');
+            const minBtn = document.getElementById('btn-minimize-terminal');
+            const header = document.getElementById('terminal-header');
+            
+            const isMinimized = panel.classList.contains('md:w-12');
+            
+            if (!isMinimized) {
+                // Minimize
+                panel.classList.remove('md:w-80');
+                panel.classList.add('md:w-12');
+                
+                // Hide contents
+                output.classList.add('hidden');
+                if (quickCmds) quickCmds.classList.add('hidden');
+                if (runForm) runForm.classList.add('hidden');
+                title.classList.add('hidden');
+                clearBtn.classList.add('hidden');
+                
+                // Adjust header flex for centered button
+                header.classList.remove('justify-between');
+                header.classList.add('justify-center');
+                
+                // Change button icon to terminal or maximize
+                minBtn.innerHTML = '<i data-lucide="terminal" class="w-4 h-4 text-brand-accent"></i>';
+                minBtn.title = "Maximize Terminal";
+                
+                // If we are on mobile, we also hide the panel completely
+                if (window.innerWidth < 768) {
+                    switchTab('code');
+                }
+            } else {
+                // Maximize
+                panel.classList.remove('md:w-12');
+                panel.classList.add('md:w-80');
+                
+                // Show contents
+                output.classList.remove('hidden');
+                if (quickCmds) quickCmds.classList.remove('hidden');
+                if (runForm) runForm.classList.remove('hidden');
+                title.classList.remove('hidden');
+                clearBtn.classList.remove('hidden');
+                
+                // Adjust header flex
+                header.classList.remove('justify-center');
+                header.classList.add('justify-between');
+                
+                minBtn.innerHTML = '<i data-lucide="minus" class="w-4 h-4"></i>';
+                minBtn.title = "Minimize Terminal";
+            }
+            
+            lucide.createIcons();
+            if (editorInstance) {
+                setTimeout(() => editorInstance.refresh(), 300);
+            }
+        }
+
+        // Add click listener on panel-terminal to maximize when minimized
+        window.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('panel-terminal').addEventListener('click', (e) => {
+                if (e.target.closest('#btn-minimize-terminal')) {
+                    return; // Ignore if clicked directly on the minimize button to avoid double toggle
+                }
+                const panel = document.getElementById('panel-terminal');
+                if (panel.classList.contains('md:w-12')) {
+                    toggleMinimizeTerminal();
+                }
+            });
+        });
 
         // Run Command (Streaming)
         async function runCommand(e) {
@@ -1744,11 +1919,11 @@
                             `;
                         } else if (quotaData.error) {
                             detailsDiv.innerHTML = `
-                                <div class="bg-amber-950/30 border border-amber-900/50 p-3 rounded-xl flex items-center space-x-3 text-amber-300">
-                                    <i data-lucide="info" class="w-5 h-5 shrink-0"></i>
+                                <div class="bg-brand-panel border border-brand-border p-3 rounded-xl flex items-start space-x-2.5 text-slate-300">
+                                    <i data-lucide="info" class="w-4.5 h-4.5 text-brand-accent mt-0.5 shrink-0"></i>
                                     <div>
-                                        <div class="font-bold text-[11px] uppercase tracking-wider">Quota agy ora tersedia</div>
-                                        <div class="text-[10px] text-slate-400">${escapeHtml(quotaData.error)}</div>
+                                        <div class="font-bold text-[11px] text-slate-200 uppercase tracking-wider mb-1">Informasi Pemakaian Quota</div>
+                                        <div class="text-[10px] text-slate-400 leading-relaxed">${escapeHtml(quotaData.error)}</div>
                                     </div>
                                 </div>
                             `;
@@ -2011,7 +2186,7 @@
             const releaseSelect = document.getElementById('release-version-select');
 
             try {
-                const res = await fetch('https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30');
+                const res = await fetch('/api/github/releases');
                 if (!res.ok) throw new Error();
                 const releases = await res.json();
                 const tagRank = tag => (tag.match(/\d+|[a-zA-Z]+/g) || []).map(part => /^\d+$/.test(part) ? Number(part) : part);
@@ -2032,7 +2207,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.1";
+                const current = "v1.4.2";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {

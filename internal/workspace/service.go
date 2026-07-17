@@ -188,7 +188,18 @@ func (s *Service) ListFiles() ([]FileInfo, error) {
 				}
 				return nil
 			}
-			if p == "node_modules" {
+			if p == "node_modules" || 
+			   p == "vendor" || 
+			   p == "dist" || 
+			   p == "build" || 
+			   p == "venv" || 
+			   p == ".venv" || 
+			   p == "env" || 
+			   p == "__pycache__" || 
+			   p == ".next" || 
+			   p == ".nuxt" || 
+			   p == "tmp" || 
+			   p == "temp" {
 				if info.IsDir() {
 					return filepath.SkipDir
 				}
