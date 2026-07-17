@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.4.7"
+const AppVersion = "v1.4.8"
 
 var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
 
@@ -1038,7 +1038,14 @@ func (h *Handler) HandleClearGoogleAuth(w http.ResponseWriter, r *http.Request) 
 
 // HandleGithubReleases proxy fetches releases from GitHub API
 func (h *Handler) HandleGithubReleases(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get("https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30")
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/sodikinnaa/go-agy-ide/releases?per_page=30", nil)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Gagal nggawe request: %v", err), http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("User-Agent", "go-agy-ide")
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Gagal nyambung menyang GitHub API: %v", err), http.StatusBadGateway)
 		return

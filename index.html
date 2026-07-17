@@ -2435,7 +2435,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.7";
+                const current = "v1.4.8";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
