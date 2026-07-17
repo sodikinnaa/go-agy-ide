@@ -1340,7 +1340,20 @@
                     if (cEl) cEl.innerHTML += `<div class="mt-2 text-xs text-yellow-500 font-semibold flex items-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i>Obrolan dimandhegake dening pangguna.</div>`;
                 } else {
                     const cEl = botBubble.querySelector('.chat-message-content');
-                    if (cEl) cEl.innerText = `Error: ${err.message}`;
+                    if (cEl) {
+                        const refreshHtml = activeConversationId ? 
+                            `<div class="mt-3 text-xs text-yellow-500 font-semibold flex flex-col space-y-2 border border-yellow-900/30 bg-yellow-950/20 p-2.5 rounded-lg">
+                                <span class="flex items-center"><i data-lucide="alert-circle" class="w-4 h-4 mr-1.5 shrink-0 text-yellow-400"></i>Koneksi pedot (mungkin tab turu/tutup). Agen isih proses njawab ing background.</span>
+                                <button onclick="selectConversation('${activeConversationId}')" class="px-2.5 py-1 bg-yellow-600 hover:bg-yellow-700 text-white rounded text-[10px] w-max font-bold transition flex items-center space-x-1">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3 animate-spin-once"></i>
+                                    <span>Muat Ulang Jawaban</span>
+                                </button>
+                            </div>` : '';
+                        cEl.innerHTML = `<div class="text-red-400">Error: ${err.message}</div>${refreshHtml}`;
+                        if (typeof lucide !== 'undefined') {
+                            lucide.createIcons();
+                        }
+                    }
                 }
             } finally {
                 if (thinkingInterval) {
@@ -2258,7 +2271,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.4";
+                const current = "v1.4.5";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
