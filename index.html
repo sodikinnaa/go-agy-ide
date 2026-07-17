@@ -1183,6 +1183,10 @@
             if (e) e.preventDefault();
             if (activeChatAbortController) return;
 
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+
             const input = document.getElementById('chat-input');
             const promptVal = input.value.trim();
             if (!promptVal) return;
@@ -1318,6 +1322,31 @@
                 // Log response completion
                 logToTerminal(`[SYSTEM] Antigravity Agent finished reasoning.`);
                 refreshWorkspace(); // Refresh workspace automatically as files might have been edited!
+
+                // Trigger PWA notification if tab is in the background
+                if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+                    try {
+                        navigator.serviceWorker.ready.then(registration => {
+                            registration.showNotification('Antigravity IDE', {
+                                body: 'Agen wis rampung njawab pitakonmu!',
+                                icon: '/icon-192.png',
+                                badge: '/icon-192.png',
+                                vibrate: [200, 100, 200],
+                                tag: 'chat-complete'
+                            });
+                        }).catch(() => {
+                            new Notification('Antigravity IDE', {
+                                body: 'Agen wis rampung njawab pitakonmu!',
+                                icon: '/icon-192.png'
+                            });
+                        });
+                    } catch (e) {
+                        new Notification('Antigravity IDE', {
+                            body: 'Agen wis rampung njawab pitakonmu!',
+                            icon: '/icon-192.png'
+                        });
+                    }
+                }
 
                 // Update activeConversationId silently if this was a new chat session
                 setTimeout(async () => {
@@ -2271,7 +2300,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.5";
+                const current = "v1.4.6";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
