@@ -1970,6 +1970,141 @@
         }
 
 
+        // --- Setup Wizard Modal Utilities ---
+        function openSetupWizard() {
+            const modal = document.getElementById('setup-wizard-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                goToWizardStep(1);
+            }
+        }
+
+        function closeSetupWizard() {
+            const modal = document.getElementById('setup-wizard-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function goToWizardStep(step) {
+            // Hide all steps
+            const s1 = document.getElementById('wizard-step-1');
+            const s2 = document.getElementById('wizard-step-2');
+            const s3 = document.getElementById('wizard-step-3');
+            if (s1) s1.classList.add('hidden');
+            if (s2) s2.classList.add('hidden');
+            if (s3) s3.classList.add('hidden');
+
+            // Show selected step
+            const activeStep = document.getElementById(`wizard-step-${step}`);
+            if (activeStep) activeStep.classList.remove('hidden');
+
+            // Update dots
+            const dots = [
+                document.getElementById('step-dot-1'),
+                document.getElementById('step-dot-2'),
+                document.getElementById('step-dot-3')
+            ];
+
+            dots.forEach((dot, index) => {
+                if (dot) {
+                    if (index < step) {
+                        dot.className = "w-2.5 h-2.5 rounded-full bg-brand-accent transition duration-300";
+                    } else {
+                        dot.className = "w-2.5 h-2.5 rounded-full bg-brand-border transition duration-300";
+                    }
+                }
+            });
+
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        async function startWizardAuthFlow(e) {
+            if (e) e.preventDefault();
+            const btnText = document.getElementById('wizard-auth-btn-text');
+            const link = document.getElementById('wizard-auth-link');
+            
+            if (btnText) btnText.innerText = "Ngundhuh Link Login...";
+            
+            try {
+                const res = await fetch('/api/auth/start');
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                
+                if (btnText) btnText.innerText = "Buka Google Auth Window";
+                if (data.url) {
+                    window.open(data.url, '_blank');
+                    if (link) {
+                        link.href = data.url;
+                        link.onclick = null; // Remove dynamic trigger once we have the link
+                    }
+                }
+            } catch (err) {
+                if (btnText) btnText.innerText = "Gagal ngambil link. Coba maneh.";
+            }
+        }
+
+        async function submitWizardAuthCode() {
+            const codeInput = document.getElementById('wizard-auth-code');
+            const submitBtn = document.getElementById('wizard-submit-btn');
+            const errorMsg = document.getElementById('wizard-error-msg');
+            
+            if (!codeInput || !submitBtn) return;
+            const code = codeInput.value.trim();
+            if (!code) {
+                if (errorMsg) {
+                    errorMsg.innerText = "Kode verifikasi ora oleh kosong";
+                    errorMsg.classList.remove('hidden');
+                }
+                return;
+            }
+
+            if (errorMsg) errorMsg.classList.add('hidden');
+            codeInput.disabled = true;
+            submitBtn.disabled = true;
+            submitBtn.innerText = "Verifikasi...";
+
+            try {
+                const response = await fetch('/api/auth/submit', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `code=${encodeURIComponent(code)}`
+                });
+
+                if (!response.ok) {
+                    const text = await response.text();
+                    throw new Error(text || "Gagal verifikasi kode");
+                }
+
+                // Success! Refresh status & quota displays and go to step 3
+                openQuotaModal(); // triggers quota and status refresh in UI
+                goToWizardStep(3);
+            } catch (err) {
+                if (errorMsg) {
+                    errorMsg.innerText = `Gagal: ${err.message}`;
+                    errorMsg.classList.remove('hidden');
+                }
+                codeInput.disabled = false;
+                submitBtn.disabled = false;
+                submitBtn.innerText = "Simpen";
+            }
+        }
+
+        // Check if credentials are set, if not trigger setup wizard
+        window.addEventListener('DOMContentLoaded', () => {
+            setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/auth/status');
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (!data.authenticated) {
+                            openSetupWizard();
+                        }
+                    }
+                } catch (e) {}
+            }, 1500);
+        });
+
         // --- Quota & Account Modal Utilities ---
         async function openQuotaModal() {
             document.getElementById('quota-modal').classList.remove('hidden');
@@ -2300,7 +2435,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.6";
+                const current = "v1.4.7";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -2461,6 +2596,110 @@
                 </div>
 
                 </div>
+        </div>
+    </div>
+
+    <!-- Setup Wizard Modal -->
+    <div id="setup-wizard-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-brand-panel border border-brand-border p-6 rounded-2xl shadow-2xl relative shadow-purple-900/20 overflow-hidden">
+            <!-- Background Glow Decor -->
+            <div class="absolute -top-16 -right-16 w-36 h-36 bg-brand-accent/20 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="absolute -bottom-16 -left-16 w-36 h-36 bg-blue-500/10 rounded-full blur-2xl pointer-events-none"></div>
+
+            <button onclick="closeSetupWizard()" class="absolute top-4 right-4 text-slate-400 hover:text-white transition">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+
+            <!-- Wizard Progress Indicator -->
+            <div class="flex items-center justify-between mb-6 border-b border-brand-border/40 pb-4">
+                <h2 class="text-sm font-bold text-white flex items-center space-x-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-brand-accent animate-bounce"></i>
+                    <span>Antigravity Setup Wizard</span>
+                </h2>
+                <div class="flex space-x-1.5">
+                    <span id="step-dot-1" class="w-2.5 h-2.5 rounded-full bg-brand-accent transition duration-300"></span>
+                    <span id="step-dot-2" class="w-2.5 h-2.5 rounded-full bg-brand-border transition duration-300"></span>
+                    <span id="step-dot-3" class="w-2.5 h-2.5 rounded-full bg-brand-border transition duration-300"></span>
+                </div>
+            </div>
+
+            <!-- STEP 1: Welcome & Intro -->
+            <div id="wizard-step-1" class="space-y-4 text-center">
+                <div class="mx-auto w-12 h-12 rounded-full bg-purple-950/40 border border-brand-accent/30 flex items-center justify-center text-brand-accent shadow-lg shadow-purple-950/20">
+                    <i data-lucide="terminal" class="w-6 h-6"></i>
+                </div>
+                <div class="space-y-1.5">
+                    <h3 class="text-md font-bold text-slate-200">Sugeng Rawuh ing IDE!</h3>
+                    <p class="text-[11px] text-slate-400 leading-relaxed max-w-sm mx-auto">
+                        Matur nuwun wis nginstal Antigravity Mobile IDE. Kanggo miwiti nulis kode karo bantuan AI, sampeyan kudu nyambungake Kredensial akun Antigravity dhisik.
+                    </p>
+                </div>
+                <button onclick="goToWizardStep(2)" class="w-full mt-2 py-2 px-4 bg-brand-accent hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition duration-200 shadow-md shadow-purple-950/50 flex items-center justify-center space-x-1.5">
+                    <span>Mulai Setup</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- STEP 2: Google Authentication -->
+            <div id="wizard-step-2" class="hidden space-y-4">
+                <div class="space-y-1.5">
+                    <h3 class="text-sm font-bold text-slate-200 flex items-center space-x-1.5">
+                        <i data-lucide="log-in" class="w-4 h-4 text-brand-accent"></i>
+                        <span>1. Sambungake Akun Google</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        Klik tombol ing ngisor iki kanggo mlebu menyang akun Google Antigravity. Sampeyan bakal dialihake menyang kaca autentikasi Google.
+                    </p>
+                </div>
+                
+                <a onclick="startWizardAuthFlow(event)" href="#" id="wizard-auth-link" target="_blank" class="w-full py-2 px-4 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded-xl text-xs font-semibold transition duration-200 flex items-center justify-center space-x-2">
+                    <i data-lucide="chrome" class="w-4 h-4 text-brand-accent"></i>
+                    <span id="wizard-auth-btn-text">Mlebu karo Google (OAuth)</span>
+                </a>
+
+                <div class="space-y-1.5 pt-2 border-t border-brand-border/40">
+                    <h3 class="text-sm font-bold text-slate-200 flex items-center space-x-1.5">
+                        <i data-lucide="key-round" class="w-4 h-4 text-brand-accent"></i>
+                        <span>2. Salin Kode Verifikasi</span>
+                    </h3>
+                    <p class="text-[11px] text-slate-400 leading-relaxed">
+                        Salin kode verifikasi (authorization code) saka kaca Google kasebut, banjur tempel ing ngisor iki:
+                    </p>
+                </div>
+
+                <div class="flex space-x-1.5">
+                    <input type="text" id="wizard-auth-code" placeholder="Tempel kode ing kene..." class="flex-1 bg-brand-dark border border-brand-border rounded-xl py-2 px-3.5 text-xs text-white focus:outline-none focus:border-brand-500 transition duration-200 font-mono">
+                    <button onclick="submitWizardAuthCode()" id="wizard-submit-btn" class="py-2 px-4 bg-brand-accent hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition duration-200">
+                        Simpen
+                    </button>
+                </div>
+                
+                <div id="wizard-error-msg" class="hidden text-[10px] text-red-400 bg-red-950/20 border border-red-900/30 p-2 rounded-lg text-center font-mono"></div>
+
+                <div class="flex items-center justify-between pt-2">
+                    <button onclick="goToWizardStep(1)" class="text-[10px] text-slate-500 hover:text-slate-400 transition underline">
+                        Bali
+                    </button>
+                </div>
+            </div>
+
+            <!-- STEP 3: Success -->
+            <div id="wizard-step-3" class="hidden space-y-4 text-center">
+                <div class="mx-auto w-12 h-12 rounded-full bg-emerald-950/40 border border-emerald-950/50 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-950/20">
+                    <i data-lucide="check" class="w-6 h-6"></i>
+                </div>
+                <div class="space-y-1.5">
+                    <h3 class="text-md font-bold text-slate-200">Setup Kasil Rampung!</h3>
+                    <p class="text-[11px] text-slate-400 leading-relaxed max-w-sm mx-auto">
+                        Akun Antigravity sampeyan wis kasil disambungake menyang IDE. Quota model lan detail project saiki wis aktif.
+                    </p>
+                </div>
+                
+                <button onclick="closeSetupWizard()" class="w-full mt-2 py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition duration-200 shadow-md flex items-center justify-center space-x-1.5">
+                    <span>Mulai Nulis Kode</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
         </div>
     </div>
 
