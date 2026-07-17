@@ -877,3 +877,39 @@ func main() {
 		t.Errorf("expected mock token to be present in accounts pool, pool: %+v", pool)
 	}
 }
+
+func TestPWARoutes(t *testing.T) {
+	_, _, _, _, h, tempWS := setupTestFixture(t)
+	defer os.RemoveAll(tempWS)
+
+	_ = os.WriteFile(filepath.Join(tempWS, "manifest.json"), []byte(`{"name":"test"}`), 0644)
+	_ = os.WriteFile(filepath.Join(tempWS, "sw.js"), []byte("console.log('sw')"), 0644)
+	_ = os.WriteFile(filepath.Join(tempWS, "icon-192.png"), []byte{1, 2, 3}, 0644)
+	_ = os.WriteFile(filepath.Join(tempWS, "icon-512.png"), []byte{4, 5, 6}, 0644)
+
+	tests := []struct {
+		url          string
+		handler      http.HandlerFunc
+		expectedCode int
+		expectedCT   string
+	}{
+		{"/manifest.json", h.HandleManifest, http.StatusOK, "application/json"},
+		{"/sw.js", h.HandleServiceWorker, http.StatusOK, "application/javascript"},
+		{"/icon-192.png", h.HandleIcon192, http.StatusOK, "image/png"},
+		{"/icon-512.png", h.HandleIcon512, http.StatusOK, "image/png"},
+	}
+
+	for _, tc := range tests {
+		req := httptest.NewRequest("GET", tc.url, nil)
+		w := httptest.NewRecorder()
+		tc.handler(w, req)
+
+		if w.Code != tc.expectedCode {
+			t.Errorf("%s: expected code %d, got %d", tc.url, tc.expectedCode, w.Code)
+		}
+		ct := w.Header().Get("Content-Type")
+		if !strings.HasPrefix(ct, tc.expectedCT) {
+			t.Errorf("%s: expected Content-Type prefix %q, got %q", tc.url, tc.expectedCT, ct)
+		}
+	}
+}

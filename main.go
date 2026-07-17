@@ -94,13 +94,23 @@ func main() {
 
 	// Initialize HTML pages embedding
 	htmlPages := handler.EmbeddedHTML{
-		IndexHTML:    embeddedIndexHTML,
-		LoginHTML:    embeddedLoginHTML,
-		LoginPwdHTML: embeddedLoginPwdHTML,
+		IndexHTML:       embeddedIndexHTML,
+		LoginHTML:       embeddedLoginHTML,
+		LoginPwdHTML:    embeddedLoginPwdHTML,
+		ManifestJSON:    embeddedManifestJSON,
+		ServiceWorkerJS: embeddedServiceWorkerJS,
+		Icon192:         embeddedIcon192,
+		Icon512:         embeddedIcon512,
 	}
 
 	// Initialize HTTP handler
 	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, htmlPages)
+
+	// Public PWA routes
+	http.HandleFunc("/manifest.json", h.HandleManifest)
+	http.HandleFunc("/sw.js", h.HandleServiceWorker)
+	http.HandleFunc("/icon-192.png", h.HandleIcon192)
+	http.HandleFunc("/icon-512.png", h.HandleIcon512)
 
 	// Routes wrapped with AuthMiddleware
 	http.HandleFunc("/", h.AuthMiddleware(h.HandleIndex))

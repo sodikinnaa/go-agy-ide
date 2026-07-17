@@ -18,14 +18,18 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.4.2"
+const AppVersion = "v1.4.3"
 
 var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
 
 type EmbeddedHTML struct {
-	IndexHTML    string
-	LoginHTML    string
-	LoginPwdHTML string
+	IndexHTML        string
+	LoginHTML        string
+	LoginPwdHTML     string
+	ManifestJSON     string
+	ServiceWorkerJS  string
+	Icon192          []byte
+	Icon512          []byte
 }
 
 type Handler struct {
@@ -1044,5 +1048,49 @@ func (h *Handler) HandleGithubReleases(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+// HandleManifest serves the PWA manifest.json
+func (h *Handler) HandleManifest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	content, err := os.ReadFile(filepath.Join(h.workspaceSvc.ServerStartDir(), "manifest.json"))
+	if err == nil {
+		_, _ = w.Write(content)
+		return
+	}
+	_, _ = w.Write([]byte(h.html.ManifestJSON))
+}
+
+// HandleServiceWorker serves the PWA service worker sw.js
+func (h *Handler) HandleServiceWorker(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/javascript")
+	content, err := os.ReadFile(filepath.Join(h.workspaceSvc.ServerStartDir(), "sw.js"))
+	if err == nil {
+		_, _ = w.Write(content)
+		return
+	}
+	_, _ = w.Write([]byte(h.html.ServiceWorkerJS))
+}
+
+// HandleIcon192 serves the 192x192 PWA icon
+func (h *Handler) HandleIcon192(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	content, err := os.ReadFile(filepath.Join(h.workspaceSvc.ServerStartDir(), "icon-192.png"))
+	if err == nil {
+		_, _ = w.Write(content)
+		return
+	}
+	_, _ = w.Write(h.html.Icon192)
+}
+
+// HandleIcon512 serves the 512x512 PWA icon
+func (h *Handler) HandleIcon512(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/png")
+	content, err := os.ReadFile(filepath.Join(h.workspaceSvc.ServerStartDir(), "icon-512.png"))
+	if err == nil {
+		_, _ = w.Write(content)
+		return
+	}
+	_, _ = w.Write(h.html.Icon512)
 }
 

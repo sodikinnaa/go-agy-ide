@@ -1,0 +1,22 @@
+{
+  "name": "Antigravity Mobile IDE",
+  "short_name": "Agy IDE",
+  "description": "Mobile-first IDE powered by Go and Antigravity AI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}
