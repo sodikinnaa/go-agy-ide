@@ -107,7 +107,9 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				r.URL.Path == "/api/auth/status" ||
 				r.URL.Path == "/api/openai/settings" ||
 				r.URL.Path == "/api/openai/models" ||
-				r.URL.Path == "/api/auth/pwd/update"
+				r.URL.Path == "/api/auth/pwd/update" ||
+				r.URL.Path == "/api/github/releases" ||
+				r.URL.Path == "/api/update"
 			isGoogleLoginPage := r.URL.Path == "/login"
 			isOpenAIConfigPage := r.URL.Path == "/"
 

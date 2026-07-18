@@ -133,6 +133,129 @@
             -ms-overflow-style: none;
             scrollbar-width: none;
         }
+        
+        /* Markdown Preview Styles */
+        .markdown-body {
+            color: #cbd5e1; /* slate-300 */
+            line-height: 1.75;
+            font-size: 15px;
+            font-family: 'Outfit', sans-serif;
+        }
+        .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4 {
+            color: #ffffff;
+            font-weight: 600;
+            margin-top: 1.5em;
+            margin-bottom: 0.6em;
+        }
+        .markdown-body h1 {
+            font-size: 1.8em;
+            border-bottom: 1px solid #1f2347; /* brand-border */
+            padding-bottom: 0.3em;
+        }
+        .markdown-body h2 {
+            font-size: 1.4em;
+            border-bottom: 1px solid #1f2347;
+            padding-bottom: 0.2em;
+        }
+        .markdown-body h3 {
+            font-size: 1.2em;
+        }
+        .markdown-body p {
+            margin-bottom: 1.2em;
+        }
+        .markdown-body a {
+            color: #a855f7; /* brand-accent */
+            text-decoration: none;
+            transition: color 0.2s;
+            font-weight: 500;
+        }
+        .markdown-body a:hover {
+            color: #c084fc; /* lighter accent */
+            text-decoration: underline;
+        }
+        .markdown-body ul {
+            list-style-type: disc;
+            margin-bottom: 1.2em;
+            padding-left: 1.5em;
+        }
+        .markdown-body ol {
+            list-style-type: decimal;
+            margin-bottom: 1.2em;
+            padding-left: 1.5em;
+        }
+        .markdown-body li {
+            margin-bottom: 0.4em;
+        }
+        .markdown-body code {
+            font-family: 'Fira Code', monospace;
+            background-color: #1e1e38; /* darker panel */
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-size: 0.85em;
+            color: #ec4899; /* pink-500 */
+        }
+        .markdown-body pre {
+            background-color: #090a15;
+            border: 1px solid #1f2347;
+            border-radius: 8px;
+            padding: 1em;
+            overflow-x: auto;
+            margin-top: 1em;
+            margin-bottom: 1.2em;
+        }
+        .markdown-body pre code {
+            background-color: transparent;
+            padding: 0;
+            border-radius: 0;
+            color: #e2e8f0;
+            font-size: 0.9em;
+        }
+        .markdown-body blockquote {
+            border-left: 4px solid #8b5cf6; /* brand-500 */
+            padding-left: 1em;
+            color: #94a3b8; /* slate-400 */
+            margin: 1.2em 0;
+            font-style: italic;
+        }
+        .markdown-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.2em;
+            font-size: 0.95em;
+        }
+        .markdown-body th, .markdown-body td {
+            border: 1px solid #1f2347;
+            padding: 0.6em 0.8em;
+        }
+        .markdown-body th {
+            background-color: #111326;
+            color: #ffffff;
+            font-weight: 600;
+        }
+        .markdown-body tr:nth-child(even) {
+            background-color: #111326;
+        }
+        .markdown-body img {
+            max-width: 100%;
+            border-radius: 8px;
+            border: 1px solid #1f2347;
+            margin: 1.2em auto;
+            display: block;
+        }
+        .markdown-body hr {
+            border: 0;
+            border-top: 1px solid #1f2347;
+            margin: 2em 0;
+        }
+        
+        /* Tabs Container Styling */
+        #editor-tabs {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        #editor-tabs::-webkit-scrollbar {
+            display: none;
+        }
     </style>
 </head>
 <body class="h-full flex flex-col overflow-hidden">
@@ -146,7 +269,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.3.9</span>
+                    <span class="text-[10px] text-slate-400">v1.5.0</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -197,8 +320,23 @@
             </div>
         </section>
 
-        <!-- Middle Pane: Code Editor -->
         <section id="panel-code" class="flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 absolute inset-0 md:relative z-10 md:flex">
+            <!-- Editor Header Bar -->
+            <div id="editor-header-bar" class="hidden flex items-center justify-between bg-brand-dark border-b border-brand-border shrink-0 text-xs select-none">
+                <div id="editor-tabs" class="flex-1 flex overflow-x-auto scrollbar-hide">
+                    <!-- Dynamic Tabs -->
+                </div>
+                <div id="editor-mode-switcher" class="hidden flex bg-brand-panel p-0.5 rounded-lg border border-brand-border m-1.5 shrink-0">
+                    <button id="editor-btn-edit" onclick="setMarkdownMode('edit')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
+                        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                        <span>Edit</span>
+                    </button>
+                    <button id="editor-btn-preview" onclick="setMarkdownMode('preview')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
+                        <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+                        <span>Preview</span>
+                    </button>
+                </div>
+            </div>
             <!-- Mobile Keyboard Helper (above CM) -->
             <div id="keyboard-helper" class="flex overflow-x-auto whitespace-nowrap bg-brand-dark p-1 border-b border-brand-border gap-1 scrollbar-hide md:hidden shrink-0">
                 <button onclick="insertCode('    ')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">Tab</button>
@@ -232,6 +370,10 @@
                             <i data-lucide="download" class="w-3.5 h-3.5 inline"></i><span>Download</span>
                         </a>
                     </div>
+                </div>
+                <!-- Markdown Preview Container -->
+                <div id="markdown-preview-container" class="hidden absolute inset-0 bg-brand-panel overflow-y-auto p-6 z-20">
+                    <div id="markdown-preview-content" class="markdown-body"></div>
                 </div>
             </div>
         </section>
@@ -400,14 +542,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/htmlmixed/htmlmixed.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/xml/xml.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/markdown/markdown.min.js"></script>
 
     <script>
+        // Wrap lucide.createIcons to prevent exceptions from crashing the app
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            const originalCreateIcons = lucide.createIcons;
+            lucide.createIcons = function(options) {
+                try {
+                    return originalCreateIcons(options);
+                } catch (err) {
+                    console.warn("Lucide failed to render some icons:", err);
+                }
+            };
+        }
+
         // State management
         let editorInstance = null;
         let activeFilePath = "";
         let currentTab = "code";
         let lastWorkspaceFilesJSON = "";
         let expandedFolders = {};
+        let isMarkdownPreviewActive = false;
+        let openTabs = [];
+        let tabStates = {};
 
         // Initialize Lucide icons
         lucide.createIcons();
@@ -423,6 +581,13 @@
                 indentUnit: 4,
                 lineWrapping: true,
                 viewportMargin: Infinity
+            });
+
+            editorInstance.on('change', () => {
+                if (activeFilePath) {
+                    if (!tabStates[activeFilePath]) tabStates[activeFilePath] = {};
+                    tabStates[activeFilePath].content = editorInstance.getValue();
+                }
             });
 
             // Adjust Editor Layout on Window Resize
@@ -807,7 +972,23 @@
                                 lowerPath.endsWith('.webp') || 
                                 lowerPath.endsWith('.ico');
                 
+                // Manage tabs state
+                if (!openTabs.includes(path)) {
+                    openTabs.push(path);
+                }
+                
                 activeFilePath = path;
+                
+                // Show editor header bar
+                const headerBar = document.getElementById('editor-header-bar');
+                const modeSwitcher = document.getElementById('editor-mode-switcher');
+                const mdContainer = document.getElementById('markdown-preview-container');
+                
+                if (headerBar) headerBar.classList.remove('hidden');
+                renderTabs();
+                
+                if (mdContainer) mdContainer.classList.add('hidden');
+                isMarkdownPreviewActive = false;
                 document.getElementById('active-file-label').innerText = path.split('/').pop();
                 document.getElementById('active-file-label').title = path;
                 
@@ -818,6 +999,8 @@
                 const cmElement = document.querySelector('.CodeMirror');
                 
                 if (isImage) {
+                    if (modeSwitcher) modeSwitcher.classList.add('hidden');
+                    
                     // Hide CodeMirror if initialized
                     if (cmElement) cmElement.style.display = 'none';
                     
@@ -838,12 +1021,16 @@
                     // Hide Image Preview
                     imgContainer.classList.add('hidden');
                     
-                    // Show CodeMirror
-                    if (cmElement) cmElement.style.display = '';
-                    
-                    const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-                    if (!res.ok) throw new Error('Gagal mbukak file');
-                    const content = await res.text();
+                    // Read from cache if it exists, otherwise fetch
+                    let content;
+                    if (tabStates[path] && tabStates[path].content !== undefined) {
+                        content = tabStates[path].content;
+                    } else {
+                        const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+                        if (!res.ok) throw new Error('Gagal mbukak file');
+                        content = await res.text();
+                        tabStates[path] = { content: content };
+                    }
                     
                     // Detect mode
                     let mode = 'text/plain';
@@ -853,9 +1040,25 @@
                     else if (path.endsWith('.py')) mode = 'python';
                     else if (path.endsWith('.html')) mode = 'htmlmixed';
                     else if (path.endsWith('.css')) mode = 'css';
+                    else if (path.endsWith('.md')) mode = 'markdown';
                     
                     editorInstance.setOption('mode', mode);
                     editorInstance.setValue(content);
+                    
+                    if (tabStates[path]) {
+                        if (tabStates[path].cursor) editorInstance.setCursor(tabStates[path].cursor);
+                        if (tabStates[path].scroll) editorInstance.scrollTo(tabStates[path].scroll.left, tabStates[path].scroll.top);
+                    }
+                    
+                    if (lowerPath.endsWith('.md')) {
+                        if (modeSwitcher) modeSwitcher.classList.remove('hidden');
+                        setMarkdownMode('preview');
+                    } else {
+                        if (modeSwitcher) modeSwitcher.classList.add('hidden');
+                        // Show CodeMirror
+                        if (cmElement) cmElement.style.display = '';
+                    }
+                    
                     editorInstance.refresh();
                 }
                 
@@ -864,6 +1067,149 @@
             } catch (err) {
                 alert(err.message);
             }
+        }
+
+        // Set Markdown Editor Mode (edit or preview)
+        function setMarkdownMode(mode) {
+            if (!activeFilePath || !activeFilePath.toLowerCase().endsWith('.md')) return;
+            
+            const cmElement = document.querySelector('.CodeMirror');
+            const mdContainer = document.getElementById('markdown-preview-container');
+            const mdContent = document.getElementById('markdown-preview-content');
+            const btnEdit = document.getElementById('editor-btn-edit');
+            const btnPreview = document.getElementById('editor-btn-preview');
+            
+            if (mode === 'preview') {
+                isMarkdownPreviewActive = true;
+                
+                // Render markdown content
+                const content = editorInstance.getValue();
+                if (mdContent) {
+                    mdContent.innerHTML = marked.parse(content);
+                }
+                
+                if (cmElement) cmElement.style.display = 'none';
+                if (mdContainer) mdContainer.classList.remove('hidden');
+                
+                // Update switcher style
+                if (btnPreview) {
+                    btnPreview.className = "px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200 bg-brand-border text-white";
+                }
+                if (btnEdit) {
+                    btnEdit.className = "px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200 text-slate-400 hover:text-white";
+                }
+            } else {
+                isMarkdownPreviewActive = false;
+                
+                if (mdContainer) mdContainer.classList.add('hidden');
+                if (cmElement) cmElement.style.display = '';
+                
+                // Update switcher style
+                if (btnEdit) {
+                    btnEdit.className = "px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200 bg-brand-border text-white";
+                }
+                if (btnPreview) {
+                    btnPreview.className = "px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200 text-slate-400 hover:text-white";
+                }
+                
+                editorInstance.refresh();
+                editorInstance.focus();
+            }
+        }
+
+        // Switch to a tab file
+        function switchTabFile(path) {
+            if (path === activeFilePath) return;
+            
+            // Save current editor state before switching
+            if (activeFilePath && editorInstance && document.querySelector('.CodeMirror').style.display !== 'none') {
+                if (!tabStates[activeFilePath]) tabStates[activeFilePath] = {};
+                tabStates[activeFilePath].cursor = editorInstance.getCursor();
+                tabStates[activeFilePath].scroll = editorInstance.getScrollInfo();
+            }
+            
+            openFile(path);
+        }
+
+        // Close a tab file
+        function closeTabFile(path) {
+            const index = openTabs.indexOf(path);
+            if (index === -1) return;
+            
+            openTabs.splice(index, 1);
+            delete tabStates[path];
+            
+            if (openTabs.length === 0) {
+                // No tabs left
+                activeFilePath = "";
+                document.getElementById('active-file-label').innerText = "No file open";
+                document.getElementById('editor-header-bar').classList.add('hidden');
+                document.getElementById('image-preview-container').classList.add('hidden');
+                document.getElementById('markdown-preview-container').classList.add('hidden');
+                const cmElement = document.querySelector('.CodeMirror');
+                if (cmElement) cmElement.style.display = 'none';
+            } else {
+                // Switch to another tab if we closed the active one
+                if (activeFilePath === path) {
+                    const newActive = openTabs[Math.max(0, index - 1)];
+                    openFile(newActive);
+                } else {
+                    renderTabs();
+                }
+            }
+        }
+
+        // Render editor tabs list
+        function renderTabs() {
+            const tabsContainer = document.getElementById('editor-tabs');
+            if (!tabsContainer) return;
+            tabsContainer.innerHTML = '';
+            
+            openTabs.forEach(tabPath => {
+                const filename = tabPath.split('/').pop();
+                const isActive = tabPath === activeFilePath;
+                
+                const tabEl = document.createElement('div');
+                tabEl.className = 'flex items-center space-x-1.5 px-3 py-1.5 border-r border-brand-border cursor-pointer transition duration-150 shrink-0 select-none ' + (isActive ? 'bg-brand-panel text-white border-t-2 border-t-brand-accent' : 'bg-brand-dark/50 text-slate-400 hover:text-slate-200 hover:bg-brand-dark');
+                
+                // Switch to file on clicking the tab element (not the close button)
+                tabEl.onclick = (e) => {
+                    switchTabFile(tabPath);
+                };
+                
+                const lowerTabPath = tabPath.toLowerCase();
+                const isImage = lowerTabPath.endsWith('.png') || 
+                                lowerTabPath.endsWith('.jpg') || 
+                                lowerTabPath.endsWith('.jpeg') || 
+                                lowerTabPath.endsWith('.gif') || 
+                                lowerTabPath.endsWith('.svg') || 
+                                lowerTabPath.endsWith('.webp') || 
+                                lowerTabPath.endsWith('.ico');
+                
+                let iconHtml = '';
+                if (isImage) {
+                    iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image text-brand-accent shrink-0"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>';
+                } else if (lowerTabPath.endsWith('.md')) {
+                    iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open text-brand-accent shrink-0"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>';
+                } else {
+                    iconHtml = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-code text-brand-accent shrink-0"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 11-2 2 2 2"/><path d="m14 11 2 2-2 2"/></svg>';
+                }
+                
+                tabEl.innerHTML = iconHtml + 
+                    '<span class="font-medium truncate max-w-[120px]">' + filename + '</span>' +
+                    '<button class="p-0.5 rounded hover:bg-brand-border text-slate-500 hover:text-white transition ml-1 shrink-0 flex items-center justify-center">' +
+                        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>' +
+                    '</button>';
+                
+                // Add close handler specifically to the button inside
+                const closeBtn = tabEl.querySelector('button');
+                closeBtn.onclick = (e) => {
+                    e.stopPropagation(); // Prevent trigger tab click
+                    closeTabFile(tabPath);
+                };
+                
+                tabsContainer.appendChild(tabEl);
+            });
         }
 
         // Save active file
@@ -959,10 +1305,8 @@
                 if (!res.ok) throw new Error('Gagal mbusak file');
 
                 logToTerminal(`[SYSTEM] Deleted: ${path}`);
-                if (activeFilePath === path) {
-                    activeFilePath = "";
-                    document.getElementById('active-file-label').innerText = "No file open";
-                    editorInstance.setValue("");
+                if (openTabs.includes(path)) {
+                    closeTabFile(path);
                 }
                 refreshWorkspace();
             } catch (err) {
@@ -2435,7 +2779,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.4.9";
+                const current = "v1.5.0";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -2563,7 +2907,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.3.9</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.0</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
