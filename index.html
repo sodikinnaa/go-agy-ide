@@ -415,6 +415,7 @@
                 <button onclick="sendTerminalKey('Down')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▼</button>
                 <button onclick="sendTerminalKey('Left')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">◀</button>
                 <button onclick="sendTerminalKey('Right')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▶</button>
+                <button onclick="sendTerminalKey('Enter')" class="px-2 py-1 bg-brand-accent hover:bg-brand-500 border border-brand-border text-[10px] text-white rounded font-semibold transition">Enter</button>
                 <button onclick="sendTerminalKey('Ctrl+D')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+D</button>
                 <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+Z</button>
             </div>
@@ -2068,6 +2069,7 @@
             else if (key === 'Down') seq = '\x1b[B';
             else if (key === 'Left') seq = '\x1b[D';
             else if (key === 'Right') seq = '\x1b[C';
+            else if (key === 'Enter') seq = '\r';
             else if (key === 'Ctrl+D') seq = '\x04';
             else if (key === 'Ctrl+Z') seq = '\x1a';
             
