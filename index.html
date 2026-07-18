@@ -638,9 +638,10 @@
                 }
             });
 
-            // Adjust Editor Layout on Window Resize
+            // Adjust Editor and Terminal Layout on Window Resize
             window.addEventListener('resize', () => {
-                editorInstance.refresh();
+                if (editorInstance) editorInstance.refresh();
+                resizeTerminalToFit();
             });
 
             // Initial refresh of workspace
@@ -768,6 +769,9 @@
             // Refresh editor to render correctly
             if (tab === 'code' && editorInstance) {
                 setTimeout(() => editorInstance.refresh(), 100);
+            }
+            if (tab === 'terminal') {
+                setTimeout(resizeTerminalToFit, 100);
             }
         }
 
@@ -1902,9 +1906,10 @@
             }
             
             lucide.createIcons();
-            if (editorInstance) {
-                setTimeout(() => editorInstance.refresh(), 300);
-            }
+            setTimeout(() => {
+                if (editorInstance) editorInstance.refresh();
+                resizeTerminalToFit();
+            }, 300);
         }
 
         // Add click listener on panel-bottom to maximize when minimized
@@ -2023,6 +2028,48 @@
 
             // Start streaming stdout/stderr
             startTerminalStreaming();
+
+            // Resize to fit container
+            setTimeout(resizeTerminalToFit, 200);
+        }
+
+        function getCharDimensions() {
+            const temp = document.createElement('span');
+            temp.style.fontFamily = 'Fira Code, monospace';
+            temp.style.fontSize = '11px';
+            temp.style.visibility = 'hidden';
+            temp.style.position = 'absolute';
+            temp.style.whiteSpace = 'nowrap';
+            temp.innerText = 'XXXXXXXXXXXXXXXXXXXX'; // 20 chars
+            document.body.appendChild(temp);
+            
+            const charWidth = temp.offsetWidth / 20;
+            const charHeight = temp.offsetHeight;
+            
+            document.body.removeChild(temp);
+            
+            return {
+                width: charWidth || 6.6,
+                height: charHeight || 14
+            };
+        }
+
+        function resizeTerminalToFit() {
+            if (!term) return;
+            const container = document.getElementById('terminal-container');
+            if (!container) return;
+
+            const dims = getCharDimensions();
+            // Subtract container padding (p-2 = 8px each side = 16px)
+            const availableWidth = container.clientWidth - 16;
+            const availableHeight = container.clientHeight - 16;
+
+            const cols = Math.floor(availableWidth / dims.width);
+            const rows = Math.floor(availableHeight / dims.height);
+
+            if (cols > 10 && rows > 3) {
+                term.resize(cols, rows);
+            }
         }
 
         async function startTerminalStreaming() {
@@ -2148,9 +2195,10 @@
                 }
             }
             lucide.createIcons();
-            if (editorInstance) {
-                setTimeout(() => editorInstance.refresh(), 300);
-            }
+            setTimeout(() => {
+                if (editorInstance) editorInstance.refresh();
+                resizeTerminalToFit();
+            }, 300);
         }
 
         async function logout() {
