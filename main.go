@@ -142,6 +142,7 @@ func main() {
 	http.HandleFunc("/api/run", h.AuthMiddleware(h.HandleRunCommandStream))
 	http.HandleFunc("/api/terminal/stream", h.AuthMiddleware(h.HandleTerminalStream))
 	http.HandleFunc("/api/terminal/input", h.AuthMiddleware(h.HandleTerminalInput))
+	http.HandleFunc("/api/ports", h.AuthMiddleware(h.HandlePorts))
 	http.HandleFunc("/api/workspaces", h.AuthMiddleware(h.HandleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", h.AuthMiddleware(h.HandleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", h.AuthMiddleware(h.HandleWorkspaceAdd))

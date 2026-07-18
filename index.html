@@ -382,11 +382,13 @@
             </div>
         </section>
 
-        <!-- Extra Pane: Terminal / Output Console -->
-        <section id="panel-terminal" class="w-full h-full md:h-64 bg-brand-dark/95 border-t border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
+        <!-- Bottom Panel Container (Terminal + Ports) -->
+        <div id="panel-bottom" class="w-full h-full md:h-64 bg-brand-dark/95 border-t border-brand-border flex flex-col md:flex-row shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex">
             <!-- Terminal Resize Handle -->
-            <div id="terminal-resize-handle" class="h-1 bg-brand-border hover:bg-brand-accent cursor-row-resize shrink-0 transition-colors select-none"></div>
+            <div id="terminal-resize-handle" class="absolute top-0 inset-x-0 h-1 bg-brand-border hover:bg-brand-accent cursor-row-resize z-40 transition-colors select-none"></div>
             
+            <!-- Terminal Panel -->
+            <section id="panel-terminal" class="flex-1 flex flex-col overflow-hidden relative border-r border-brand-border pt-1">
             <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
                 <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
                 <div class="flex items-center space-x-1" id="terminal-actions">
@@ -440,6 +442,29 @@
                 </form>
             </div>
         </section>
+
+        <!-- Active Ports Panel -->
+        <section id="panel-ports" class="w-full h-10 md:h-full md:w-72 bg-brand-dark/80 flex flex-col shrink-0 overflow-hidden transition-all duration-300 relative border-t md:border-t-0 md:border-l border-brand-border pt-1">
+            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="ports-header">
+                <div class="flex items-center space-x-1.5">
+                    <i data-lucide="network" class="w-4 h-4 text-brand-accent"></i>
+                    <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase">Active Ports</span>
+                </div>
+                <div class="flex items-center space-x-1">
+                    <button onclick="refreshPorts()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Refresh ports">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <button onclick="toggleMinimizePorts()" id="btn-minimize-ports" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Toggle Ports Panel">
+                        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Ports List Content -->
+            <div id="ports-container" class="flex-1 overflow-y-auto p-3 space-y-2 select-text">
+                <div class="text-xs text-slate-500 text-center py-4">No active ports detected</div>
+            </div>
+        </section>
+        </div>
         </div>
 
         <!-- Right Pane: Antigravity Assistant Chat -->
@@ -625,6 +650,10 @@
             // Initialize Interactive Terminal (xterm.js)
             initInteractiveTerminal();
 
+            // Initialize Active Ports Polling
+            refreshPorts();
+            setInterval(refreshPorts, 5000);
+
             // Restore active conversation session if saved
             const savedAgentId = localStorage.getItem('activeConversationId');
             if (savedAgentId) {
@@ -670,8 +699,8 @@
                 document.getElementById('panel-files').style.transform = 'none';
                 document.getElementById('panel-code').style.transform = 'none';
                 document.getElementById('panel-chat').style.transform = 'none';
-                document.getElementById('panel-terminal').classList.remove('hidden');
-                document.getElementById('panel-terminal').style.transform = 'none';
+                document.getElementById('panel-bottom').classList.remove('hidden');
+                document.getElementById('panel-bottom').style.transform = 'none';
             } else {
                 // Mobile: Hide all panels except active tab
                 switchTab(currentTab);
@@ -689,7 +718,7 @@
                 files: document.getElementById('panel-files'),
                 code: document.getElementById('panel-code'),
                 chat: document.getElementById('panel-chat'),
-                terminal: document.getElementById('panel-terminal')
+                terminal: document.getElementById('panel-bottom')
             };
 
             const buttons = {
@@ -1806,7 +1835,7 @@
             if (event) {
                 event.stopPropagation();
             }
-            const panel = document.getElementById('panel-terminal');
+            const panel = document.getElementById('panel-bottom');
             const output = document.getElementById('terminal-container');
             const shortcuts = document.getElementById('terminal-shortcuts');
             const quickCmds = document.getElementById('terminal-quick-cmds');
@@ -1877,13 +1906,13 @@
             }
         }
 
-        // Add click listener on panel-terminal to maximize when minimized
+        // Add click listener on panel-bottom to maximize when minimized
         window.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('panel-terminal').addEventListener('click', (e) => {
+            document.getElementById('panel-bottom').addEventListener('click', (e) => {
                 if (e.target.closest('#btn-minimize-terminal')) {
                     return; // Ignore if clicked directly on the minimize button to avoid double toggle
                 }
-                const panel = document.getElementById('panel-terminal');
+                const panel = document.getElementById('panel-bottom');
                 if (panel.classList.contains('md:h-11')) {
                     toggleMinimizeTerminal();
                 }
@@ -1893,7 +1922,7 @@
         // Terminal Resizer & Height Restoration
         window.addEventListener('DOMContentLoaded', () => {
             const handle = document.getElementById('terminal-resize-handle');
-            const panel = document.getElementById('panel-terminal');
+            const panel = document.getElementById('panel-bottom');
             if (!handle || !panel) return;
 
             // Load saved height on load
@@ -2045,6 +2074,88 @@
             if (seq) {
                 sendTerminalInput(seq);
             }
+        }
+
+        async function refreshPorts() {
+            const container = document.getElementById('ports-container');
+            if (!container) return;
+
+            try {
+                const response = await fetch('/api/ports');
+                if (!response.ok) throw new Error('Failed to fetch ports');
+                const ports = await response.json();
+
+                if (!ports || ports.length === 0) {
+                    container.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No active ports detected</div>';
+                    return;
+                }
+
+                // Sort by port number ascending
+                ports.sort((a, b) => a.port - b.port);
+
+                container.innerHTML = '';
+                ports.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = "flex items-center justify-between p-2 rounded-lg bg-brand-panel/40 border border-brand-border/60 text-xs hover:bg-brand-panel transition select-all";
+                    
+                    const processInfo = item.process ? `<span class="px-1.5 py-0.5 rounded bg-brand-600/30 text-brand-accent font-semibold text-[10px] uppercase font-mono truncate max-w-[100px]" title="PID ${item.pid}: ${item.process}">${item.process}</span>` : `<span class="text-slate-500 text-[10px] italic">unknown</span>`;
+                    
+                    row.innerHTML = `
+                        <div class="flex items-center space-x-2 truncate">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+                            <span class="font-mono font-semibold text-slate-200 hover:text-brand-accent cursor-pointer" onclick="window.open('http://' + window.location.hostname + ':' + ${item.port}, '_blank')" title="Open http://${item.ip}:${item.port} in browser">:${item.port}</span>
+                            <span class="text-slate-500 text-[10px] truncate max-w-[80px] font-mono">(${item.ip})</span>
+                        </div>
+                        ${processInfo}
+                    `;
+                    container.appendChild(row);
+                });
+
+            } catch (err) {
+                container.innerHTML = `<div class="text-xs text-red-500 text-center py-4">Error: ${err.message}</div>`;
+            }
+        }
+
+        function toggleMinimizePorts() {
+            const panel = document.getElementById('panel-ports');
+            const container = document.getElementById('ports-container');
+            const btn = document.getElementById('btn-minimize-ports');
+            if (!panel) return;
+            
+            const isCollapsedDesktop = panel.classList.contains('md:w-10');
+            const isCollapsedMobile = panel.classList.contains('h-10');
+            const isMobile = window.innerWidth < 768;
+            
+            if (isMobile) {
+                if (isCollapsedMobile) {
+                    // Expand on mobile
+                    panel.classList.remove('h-10');
+                    panel.classList.add('h-48');
+                    if (container) container.classList.remove('hidden');
+                    btn.innerHTML = '<i data-lucide="chevron-down" class="w-4 h-4"></i>';
+                } else {
+                    // Collapse on mobile
+                    panel.classList.remove('h-48');
+                    panel.classList.add('h-10');
+                    if (container) container.classList.add('hidden');
+                    btn.innerHTML = '<i data-lucide="chevron-up" class="w-4 h-4"></i>';
+                }
+            } else {
+                if (!isCollapsedDesktop) {
+                    // Collapse on desktop
+                    panel.classList.remove('md:w-72');
+                    panel.classList.add('md:w-10');
+                    if (container) container.classList.add('hidden');
+                    btn.innerHTML = '<i data-lucide="chevron-right" class="w-4 h-4"></i>';
+                } else {
+                    // Expand on desktop
+                    panel.classList.remove('md:w-10');
+                    panel.classList.add('md:w-72');
+                    if (container) container.classList.remove('hidden');
+                    btn.innerHTML = '<i data-lucide="chevron-left" class="w-4 h-4"></i>';
+                }
+            }
+            lucide.createIcons();
         }
 
         async function logout() {
