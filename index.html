@@ -323,7 +323,8 @@
             </div>
         </section>
 
-        <section id="panel-code" class="flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 absolute inset-0 md:relative z-10 md:flex">
+        <div id="panel-center" class="flex-1 flex flex-col overflow-hidden relative">
+            <section id="panel-code" class="flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 absolute inset-0 md:relative z-10 md:flex">
             <!-- Editor Header Bar -->
             <div id="editor-header-bar" class="hidden flex items-center justify-between bg-brand-dark border-b border-brand-border shrink-0 text-xs select-none">
                 <div id="editor-tabs" class="flex-1 flex overflow-x-auto scrollbar-hide">
@@ -380,6 +381,63 @@
                 </div>
             </div>
         </section>
+
+        <!-- Extra Pane: Terminal / Output Console -->
+        <section id="panel-terminal" class="w-full h-full md:h-64 bg-brand-dark/95 border-t border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
+            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
+                <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
+                <div class="flex items-center space-x-1" id="terminal-actions">
+                    <button onclick="clearTerminal()" id="btn-clear-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear console">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                    <button onclick="toggleMinimizeTerminal(event)" id="btn-minimize-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Minimize Terminal">
+                        <i data-lucide="minus" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- Terminal Output -->
+            <div id="terminal-container" class="flex-1 overflow-hidden p-2 bg-black"></div>
+            
+            <!-- Terminal Helper Buttons (Mobile-friendly shortcuts) -->
+            <div id="terminal-shortcuts" class="px-2 py-1 bg-brand-panel/40 flex items-center justify-between overflow-x-auto shrink-0 select-none space-x-1 border-t border-brand-border">
+                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+C</button>
+                <button onclick="sendTerminalKey('Tab')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Tab</button>
+                <button onclick="sendTerminalKey('Esc')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Esc</button>
+                <button onclick="sendTerminalKey('Up')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▲</button>
+                <button onclick="sendTerminalKey('Down')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▼</button>
+                <button onclick="sendTerminalKey('Left')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">◀</button>
+                <button onclick="sendTerminalKey('Right')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▶</button>
+                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+D</button>
+                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+Z</button>
+            </div>
+            <!-- Quick Commands Bar -->
+            <div id="terminal-quick-cmds" class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
+                <span class="text-[10px] text-slate-500 self-center mr-1 font-semibold uppercase">Quick:</span>
+                <button onclick="executeCommand('agy-mobile status')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status server Mobile IDE">
+                    agy-mobile status
+                </button>
+                <button onclick="executeCommand('agy-mobile log')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco 100 baris log server pungkasan">
+                    agy-mobile log
+                </button>
+                <button onclick="executeCommand('agy-mobile logs')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco log otentikasi pungkasan">
+                    agy-mobile logs
+                </button>
+                <button onclick="executeCommand('agy-mobile update')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Update Mobile IDE menyang versi paling anyar">
+                    agy-mobile update
+                </button>
+            </div>
+            <!-- Terminal Run Command -->
+            <div class="p-3 border-t border-brand-border bg-brand-dark/40 shrink-0">
+                <form id="terminal-form" onsubmit="runCommand(event)" class="flex items-center space-x-2">
+                    <span class="text-xs text-slate-500 font-mono">$</span>
+                    <input type="text" id="terminal-input" placeholder="go run main.go, git status..." class="flex-1 bg-brand-panel border border-brand-border rounded-lg p-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-brand-500 font-mono">
+                    <button type="submit" class="px-3 py-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg text-xs font-semibold transition">
+                        Run
+                    </button>
+                </form>
+            </div>
+        </section>
+        </div>
 
         <!-- Right Pane: Antigravity Assistant Chat -->
         <section id="panel-chat" class="w-full md:w-[400px] bg-brand-dark/90 border-l border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-20 transform translate-x-full md:translate-x-0 md:flex">
@@ -469,62 +527,7 @@
                 </form>
             </div>
         </section>
-
-        <!-- Extra Pane: Terminal / Output Console -->
-        <section id="panel-terminal" class="w-full md:w-80 bg-brand-dark/95 border-l border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
-            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
-                <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
-                <div class="flex items-center space-x-1" id="terminal-actions">
-                    <button onclick="clearTerminal()" id="btn-clear-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear console">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i>
-                    </button>
-                    <button onclick="toggleMinimizeTerminal(event)" id="btn-minimize-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Minimize Terminal">
-                        <i data-lucide="minus" class="w-4 h-4"></i>
-                    </button>
-                </div>
-            </div>
-            <!-- Terminal Output -->
-            <div id="terminal-container" class="flex-1 overflow-hidden p-2 bg-black"></div>
-            
-            <!-- Terminal Helper Buttons (Mobile-friendly shortcuts) -->
-            <div id="terminal-shortcuts" class="px-2 py-1 bg-brand-panel/40 flex items-center justify-between overflow-x-auto shrink-0 select-none space-x-1 border-t border-brand-border">
-                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+C</button>
-                <button onclick="sendTerminalKey('Tab')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Tab</button>
-                <button onclick="sendTerminalKey('Esc')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Esc</button>
-                <button onclick="sendTerminalKey('Up')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▲</button>
-                <button onclick="sendTerminalKey('Down')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▼</button>
-                <button onclick="sendTerminalKey('Left')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">◀</button>
-                <button onclick="sendTerminalKey('Right')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▶</button>
-                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+D</button>
-                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+Z</button>
-            </div>
-            <!-- Quick Commands Bar -->
-            <div id="terminal-quick-cmds" class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
-                <span class="text-[10px] text-slate-500 self-center mr-1 font-semibold uppercase">Quick:</span>
-                <button onclick="executeCommand('agy-mobile status')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status server Mobile IDE">
-                    agy-mobile status
-                </button>
-                <button onclick="executeCommand('agy-mobile log')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco 100 baris log server pungkasan">
-                    agy-mobile log
-                </button>
-                <button onclick="executeCommand('agy-mobile logs')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Moco log otentikasi pungkasan">
-                    agy-mobile logs
-                </button>
-                <button onclick="executeCommand('agy-mobile update')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Update Mobile IDE menyang versi paling anyar">
-                    agy-mobile update
-                </button>
-            </div>
-            <!-- Terminal Run Command -->
-            <div class="p-3 border-t border-brand-border bg-brand-dark/40 shrink-0">
-                <form id="terminal-form" onsubmit="runCommand(event)" class="flex items-center space-x-2">
-                    <span class="text-xs text-slate-500 font-mono">$</span>
-                    <input type="text" id="terminal-input" placeholder="go run main.go, git status..." class="flex-1 bg-brand-panel border border-brand-border rounded-lg p-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-brand-500 font-mono">
-                    <button type="submit" class="px-3 py-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg text-xs font-semibold transition">
-                        Run
-                    </button>
-                </form>
-            </div>
-        </section>
+        </div>
 
     </main>
 
@@ -1810,12 +1813,12 @@
             const minBtn = document.getElementById('btn-minimize-terminal');
             const header = document.getElementById('terminal-header');
             
-            const isMinimized = panel.classList.contains('md:w-12');
+            const isMinimized = panel.classList.contains('md:h-11');
             
             if (!isMinimized) {
                 // Minimize
-                panel.classList.remove('md:w-80');
-                panel.classList.add('md:w-12');
+                panel.classList.remove('md:h-64');
+                panel.classList.add('md:h-11');
                 
                 // Hide contents
                 if (output) output.classList.add('hidden');
@@ -1839,8 +1842,8 @@
                 }
             } else {
                 // Maximize
-                panel.classList.remove('md:w-12');
-                panel.classList.add('md:w-80');
+                panel.classList.remove('md:h-11');
+                panel.classList.add('md:h-64');
                 
                 // Show contents
                 if (output) output.classList.remove('hidden');
@@ -1871,7 +1874,7 @@
                     return; // Ignore if clicked directly on the minimize button to avoid double toggle
                 }
                 const panel = document.getElementById('panel-terminal');
-                if (panel.classList.contains('md:w-12')) {
+                if (panel.classList.contains('md:h-11')) {
                     toggleMinimizeTerminal();
                 }
             });
