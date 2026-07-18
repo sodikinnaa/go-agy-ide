@@ -14,10 +14,20 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
-type Service struct{}
+type Service struct {
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	stdout    io.ReadCloser
+	isRunning bool
+	mutex     sync.Mutex
+	clients   map[chan []byte]bool
+	clientMux sync.Mutex
+	history   []byte
+}
 
 type OpenAISettings struct {
 	APIBase          string   `json:"apiBase"`
@@ -29,7 +39,150 @@ type OpenAISettings struct {
 }
 
 func NewService() *Service {
-	return &Service{}
+	return &Service{
+		clients: make(map[chan []byte]bool),
+	}
+}
+
+func (s *Service) StartSession(workspaceDir string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.isRunning {
+		return nil
+	}
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		if _, err := exec.LookPath("bash"); err == nil {
+			cmd = exec.Command("bash", "-i")
+		} else if _, err := exec.LookPath("powershell"); err == nil {
+			cmd = exec.Command("powershell")
+		} else {
+			cmd = exec.Command("cmd")
+		}
+	} else {
+		cmd = exec.Command("bash", "-i")
+	}
+
+	cmd.Dir = workspaceDir
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		stdin.Close()
+		return err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		stdin.Close()
+		stdout.Close()
+		return err
+	}
+
+	s.cmd = cmd
+	s.stdin = stdin
+	s.stdout = stdout
+	s.isRunning = true
+
+	// Read loop
+	go func() {
+		buf := make([]byte, 1024)
+		for {
+			n, err := stdout.Read(buf)
+			if n > 0 {
+				data := make([]byte, n)
+				copy(data, buf[:n])
+				s.Broadcast(data)
+			}
+			if err != nil {
+				break
+			}
+		}
+		s.mutex.Lock()
+		s.isRunning = false
+		if s.stdin != nil {
+			_ = s.stdin.Close()
+		}
+		if s.stdout != nil {
+			_ = s.stdout.Close()
+		}
+		s.mutex.Unlock()
+	}()
+
+	return nil
+}
+
+func (s *Service) WriteInput(data string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if !s.isRunning || s.stdin == nil {
+		return fmt.Errorf("terminal session not running")
+	}
+
+	_, err := s.stdin.Write([]byte(data))
+	return err
+}
+
+func (s *Service) RegisterClient(ch chan []byte) {
+	s.clientMux.Lock()
+	if s.clients == nil {
+		s.clients = make(map[chan []byte]bool)
+	}
+	s.clients[ch] = true
+	
+	// Send history to new client
+	if len(s.history) > 0 {
+		histCopy := make([]byte, len(s.history))
+		copy(histCopy, s.history)
+		select {
+		case ch <- histCopy:
+		default:
+		}
+	}
+	s.clientMux.Unlock()
+}
+
+func (s *Service) UnregisterClient(ch chan []byte) {
+	s.clientMux.Lock()
+	if s.clients != nil {
+		delete(s.clients, ch)
+	}
+	s.clientMux.Unlock()
+}
+
+func (s *Service) Broadcast(data []byte) {
+	s.clientMux.Lock()
+	defer s.clientMux.Unlock()
+	
+	s.history = append(s.history, data...)
+	if len(s.history) > 20000 {
+		s.history = s.history[len(s.history)-20000:]
+	}
+	
+	for ch := range s.clients {
+		select {
+		case ch <- data:
+		default:
+		}
+	}
+}
+
+func (s *Service) KillSession() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if s.isRunning && s.cmd != nil && s.cmd.Process != nil {
+		_ = s.cmd.Process.Kill()
+	}
 }
 
 // StartCommand executes a bash command and returns its stdout/stderr reader

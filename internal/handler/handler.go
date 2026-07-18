@@ -1103,3 +1103,72 @@ func (h *Handler) HandleIcon512(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(h.html.Icon512)
 }
 
+// HandleTerminalStream handles live streaming of the persistent terminal session
+func (h *Handler) HandleTerminalStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Ensure the session is running
+	err := h.terminalSvc.StartSession(h.workspaceSvc.ActiveWorkspaceDir())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	ch := make(chan []byte, 100)
+	h.terminalSvc.RegisterClient(ch)
+	defer h.terminalSvc.UnregisterClient(ch)
+
+	// Flush initial headers
+	flusher.Flush()
+
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case data := <-ch:
+			_, _ = w.Write(data)
+			flusher.Flush()
+		case <-ticker.C:
+			// keep alive ping
+			_, _ = w.Write([]byte(""))
+			flusher.Flush()
+		case <-r.Context().Done():
+			return
+		}
+	}
+}
+
+// HandleTerminalInput writes raw input into the persistent terminal session
+func (h *Handler) HandleTerminalInput(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := h.terminalSvc.WriteInput(req.Data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+

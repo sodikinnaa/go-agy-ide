@@ -140,6 +140,8 @@ func main() {
 	http.HandleFunc("/api/chat/stop", h.AuthMiddleware(h.HandleChatStop))
 	http.HandleFunc("/api/chat/delete", h.AuthMiddleware(h.HandleChatDelete))
 	http.HandleFunc("/api/run", h.AuthMiddleware(h.HandleRunCommandStream))
+	http.HandleFunc("/api/terminal/stream", h.AuthMiddleware(h.HandleTerminalStream))
+	http.HandleFunc("/api/terminal/input", h.AuthMiddleware(h.HandleTerminalInput))
 	http.HandleFunc("/api/workspaces", h.AuthMiddleware(h.HandleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", h.AuthMiddleware(h.HandleWorkspaceSelect))
 	http.HandleFunc("/api/workspaces/add", h.AuthMiddleware(h.HandleWorkspaceAdd))

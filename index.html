@@ -90,6 +90,9 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Marked Markdown Parser -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- xterm.js for interactive terminal -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 
     <style>
         body {
@@ -481,8 +484,19 @@
                 </div>
             </div>
             <!-- Terminal Output -->
-            <div id="terminal-output" class="flex-1 overflow-y-auto p-4 code-font text-xs text-slate-300 space-y-1 bg-black">
-                <div>$ Welcome to the mobile developer terminal console.</div>
+            <div id="terminal-container" class="flex-1 overflow-hidden p-2 bg-black"></div>
+            
+            <!-- Terminal Helper Buttons (Mobile-friendly shortcuts) -->
+            <div id="terminal-shortcuts" class="px-2 py-1 bg-brand-panel/40 flex items-center justify-between overflow-x-auto shrink-0 select-none space-x-1 border-t border-brand-border">
+                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+C</button>
+                <button onclick="sendTerminalKey('Tab')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Tab</button>
+                <button onclick="sendTerminalKey('Esc')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Esc</button>
+                <button onclick="sendTerminalKey('Up')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▲</button>
+                <button onclick="sendTerminalKey('Down')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▼</button>
+                <button onclick="sendTerminalKey('Left')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">◀</button>
+                <button onclick="sendTerminalKey('Right')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▶</button>
+                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+D</button>
+                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+Z</button>
             </div>
             <!-- Quick Commands Bar -->
             <div id="terminal-quick-cmds" class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
@@ -566,6 +580,8 @@
         let isMarkdownPreviewActive = false;
         let openTabs = [];
         let tabStates = {};
+        let term;
+        let terminalStreamReader = null;
 
         // Initialize Lucide icons
         lucide.createIcons();
@@ -599,6 +615,9 @@
             refreshWorkspace();
             loadOpenAISettings();
             loadAvailableModels();
+
+            // Initialize Interactive Terminal (xterm.js)
+            initInteractiveTerminal();
 
             // Restore active conversation session if saved
             const savedAgentId = localStorage.getItem('activeConversationId');
@@ -1766,24 +1785,15 @@
 
         // Terminal logging
         function logToTerminal(text, type = 'system') {
-            const terminal = document.getElementById('terminal-output');
-            const line = document.createElement('div');
-            
-            if (type === 'error') {
-                line.className = 'text-red-500';
-            } else if (type === 'cmd') {
-                line.className = 'text-green-400 font-semibold';
-            } else if (type === 'system') {
-                line.className = 'text-brand-accent font-semibold';
+            if (term) {
+                term.write(text + '\r\n');
             }
-            
-            line.innerText = text;
-            terminal.appendChild(line);
-            terminal.scrollTop = terminal.scrollHeight;
         }
 
         function clearTerminal() {
-            document.getElementById('terminal-output').innerHTML = '<div>$ Console cleared.</div>';
+            if (term) {
+                term.write('\x1bc'); // ANSI Reset terminal sequence
+            }
         }
 
         function toggleMinimizeTerminal(event) {
@@ -1791,7 +1801,8 @@
                 event.stopPropagation();
             }
             const panel = document.getElementById('panel-terminal');
-            const output = document.getElementById('terminal-output');
+            const output = document.getElementById('terminal-container');
+            const shortcuts = document.getElementById('terminal-shortcuts');
             const quickCmds = document.getElementById('terminal-quick-cmds');
             const runForm = document.getElementById('terminal-form').parentNode;
             const title = document.getElementById('terminal-title');
@@ -1807,7 +1818,8 @@
                 panel.classList.add('md:w-12');
                 
                 // Hide contents
-                output.classList.add('hidden');
+                if (output) output.classList.add('hidden');
+                if (shortcuts) shortcuts.classList.add('hidden');
                 if (quickCmds) quickCmds.classList.add('hidden');
                 if (runForm) runForm.classList.add('hidden');
                 title.classList.add('hidden');
@@ -1831,7 +1843,8 @@
                 panel.classList.add('md:w-80');
                 
                 // Show contents
-                output.classList.remove('hidden');
+                if (output) output.classList.remove('hidden');
+                if (shortcuts) shortcuts.classList.remove('hidden');
                 if (quickCmds) quickCmds.classList.remove('hidden');
                 if (runForm) runForm.classList.remove('hidden');
                 title.classList.remove('hidden');
@@ -1864,52 +1877,98 @@
             });
         });
 
-        // Run Command (Streaming)
+        // Run Command (Streaming to interactive terminal)
         async function runCommand(e) {
             e.preventDefault();
             const input = document.getElementById('terminal-input');
-            const command = input.value.trim();
+            const command = input.value;
             if (!command) return;
 
+            sendTerminalInput(command + '\r');
             input.value = "";
-            await executeCommand(command);
         }
 
         // Execute Command directly (e.g. from quick commands buttons)
         async function executeCommand(command) {
-            logToTerminal(`$ ${command}`, 'cmd');
+            sendTerminalInput(command + '\r');
+        }
+
+        function initInteractiveTerminal() {
+            const container = document.getElementById('terminal-container');
+            if (!container) return;
+
+            term = new Terminal({
+                cursorBlink: true,
+                fontSize: 11,
+                fontFamily: 'Fira Code, monospace',
+                theme: {
+                    background: '#000000',
+                    foreground: '#cbd5e1',
+                    cursor: '#a855f7',
+                },
+                rows: 24,
+                cols: 80
+            });
+            term.open(container);
+            
+            // Handle keypresses/inputs inside xterm.js
+            term.onData(data => {
+                sendTerminalInput(data);
+            });
+
+            // Start streaming stdout/stderr
+            startTerminalStreaming();
+        }
+
+        async function startTerminalStreaming() {
             try {
-                const response = await fetch('/api/run', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: `command=${encodeURIComponent(command)}`
-                });
-
-                if (!response.ok) throw new Error('Command failed to start');
-
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder("utf-8");
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const text = decoder.decode(value, { stream: true });
-                    // Append output splitting by line
-                    const lines = text.split('\n');
-                    lines.forEach(line => {
-                        if (line.trim() !== '') {
-                            logToTerminal(line, 'output');
-                        }
-                    });
-                }
+                const response = await fetch('/api/terminal/stream');
+                if (!response.ok) throw new Error('Terminal stream failed to start');
                 
-                refreshWorkspace(); // Refresh in case files changed
-
+                terminalStreamReader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await terminalStreamReader.read();
+                    if (done) break;
+                    const text = decoder.decode(value);
+                    if (text) {
+                        term.write(text);
+                    }
+                }
             } catch (err) {
-                logToTerminal(`Error: ${err.message}`, 'error');
+                term.write('\r\n\x1b[31m[ERROR] Gagal nyambung menyang terminal: ' + err.message + '\x1b[0m\r\n');
+                // Retry connection in 3 seconds
+                setTimeout(startTerminalStreaming, 3000);
+            }
+        }
+
+        async function sendTerminalInput(data) {
+            try {
+                await fetch('/api/terminal/input', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: data })
+                });
+            } catch (err) {
+                console.error('Failed to send terminal input:', err);
+            }
+        }
+
+        function sendTerminalKey(key) {
+            let seq = '';
+            if (key === 'Ctrl+C') seq = '\x03';
+            else if (key === 'Tab') seq = '\t';
+            else if (key === 'Esc') seq = '\x1b';
+            else if (key === 'Up') seq = '\x1b[A';
+            else if (key === 'Down') seq = '\x1b[B';
+            else if (key === 'Left') seq = '\x1b[D';
+            else if (key === 'Right') seq = '\x1b[C';
+            else if (key === 'Ctrl+D') seq = '\x04';
+            else if (key === 'Ctrl+Z') seq = '\x1a';
+            
+            if (seq) {
+                sendTerminalInput(seq);
             }
         }
 
