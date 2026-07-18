@@ -384,6 +384,9 @@
 
         <!-- Extra Pane: Terminal / Output Console -->
         <section id="panel-terminal" class="w-full h-full md:h-64 bg-brand-dark/95 border-t border-brand-border flex flex-col shrink-0 transition-all duration-300 absolute inset-y-0 right-0 md:relative z-30 transform translate-x-full md:translate-x-0 md:flex flex">
+            <!-- Terminal Resize Handle -->
+            <div id="terminal-resize-handle" class="h-1 bg-brand-border hover:bg-brand-accent cursor-row-resize shrink-0 transition-colors select-none"></div>
+            
             <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
                 <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
                 <div class="flex items-center space-x-1" id="terminal-actions">
@@ -1817,6 +1820,7 @@
             
             if (!isMinimized) {
                 // Minimize
+                panel.style.height = ''; // Clear custom height so it collapses to md:h-11
                 panel.classList.remove('md:h-64');
                 panel.classList.add('md:h-11');
                 
@@ -1843,7 +1847,13 @@
             } else {
                 // Maximize
                 panel.classList.remove('md:h-11');
-                panel.classList.add('md:h-64');
+                
+                const savedHeight = localStorage.getItem('terminalHeight');
+                if (savedHeight && window.innerWidth >= 768) {
+                    panel.style.height = savedHeight + 'px';
+                } else {
+                    panel.classList.add('md:h-64');
+                }
                 
                 // Show contents
                 if (output) output.classList.remove('hidden');
@@ -1880,6 +1890,67 @@
             });
         });
 
+        // Terminal Resizer & Height Restoration
+        window.addEventListener('DOMContentLoaded', () => {
+            const handle = document.getElementById('terminal-resize-handle');
+            const panel = document.getElementById('panel-terminal');
+            if (!handle || !panel) return;
+
+            // Load saved height on load
+            const savedHeight = localStorage.getItem('terminalHeight');
+            if (savedHeight && window.innerWidth >= 768) {
+                panel.style.height = savedHeight + 'px';
+                panel.classList.remove('md:h-64');
+            }
+
+            let startY = 0;
+            let startHeight = 0;
+
+            function onPointerDown(e) {
+                if (panel.classList.contains('md:h-11')) return;
+                
+                startY = e.clientY || (e.touches && e.touches[0].clientY);
+                startHeight = panel.offsetHeight;
+
+                document.addEventListener('mousemove', onPointerMove);
+                document.addEventListener('mouseup', onPointerUp);
+                document.addEventListener('touchmove', onPointerMove, { passive: false });
+                document.addEventListener('touchend', onPointerUp);
+                
+                document.body.classList.add('select-none');
+            }
+
+            function onPointerMove(e) {
+                const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+                const dy = startY - clientY;
+                let newHeight = startHeight + dy;
+
+                const minHeight = 80;
+                const maxHeight = window.innerHeight * 0.8;
+                if (newHeight < minHeight) newHeight = minHeight;
+                if (newHeight > maxHeight) newHeight = maxHeight;
+
+                panel.style.height = newHeight + 'px';
+                panel.classList.remove('md:h-64');
+            }
+
+            function onPointerUp() {
+                document.removeEventListener('mousemove', onPointerMove);
+                document.removeEventListener('mouseup', onPointerUp);
+                document.removeEventListener('touchmove', onPointerMove);
+                document.removeEventListener('touchend', onPointerUp);
+                
+                document.body.classList.remove('select-none');
+
+                if (!panel.classList.contains('md:h-11')) {
+                    localStorage.setItem('terminalHeight', panel.offsetHeight);
+                }
+            }
+
+            handle.addEventListener('mousedown', onPointerDown);
+            handle.addEventListener('touchstart', onPointerDown);
+        });
+
         // Run Command (Streaming to interactive terminal)
         async function runCommand(e) {
             e.preventDefault();
@@ -1902,6 +1973,7 @@
 
             term = new Terminal({
                 cursorBlink: true,
+                convertEol: true,
                 fontSize: 11,
                 fontFamily: 'Fira Code, monospace',
                 theme: {
