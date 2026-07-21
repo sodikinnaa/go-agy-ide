@@ -923,28 +923,56 @@
             lucide.createIcons();
         }
 
+        function resolveTargetUrl(rawUrl) {
+            let url = (rawUrl || '').trim();
+            const serverHost = window.location.hostname || 'localhost';
+
+            if (!url || url === 'about:blank') {
+                return 'http://' + serverHost + ':8080/';
+            }
+
+            // Handles port shorthand like ":8080" or ":3000/app"
+            if (url.startsWith(':')) {
+                return 'http://' + serverHost + url;
+            }
+
+            // Handles relative paths like "/hello.txt"
+            if (url.startsWith('/')) {
+                return window.location.origin + url;
+            }
+
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                if (url.startsWith('localhost:') || url.startsWith('127.0.0.1:')) {
+                    const portAndPath = url.substring(url.indexOf(':'));
+                    url = 'http://' + serverHost + portAndPath;
+                } else {
+                    url = 'http://' + url;
+                }
+            } else {
+                if (serverHost !== 'localhost' && serverHost !== '127.0.0.1') {
+                    url = url.replace('://localhost:', '://' + serverHost + ':')
+                             .replace('://127.0.0.1:', '://' + serverHost + ':');
+                }
+            }
+
+            return url;
+        }
+
         function refreshLiveBrowser() {
             const iframe = document.getElementById('live-browser-iframe');
             const input = document.getElementById('browser-url-input');
             if (!iframe) return;
-            let url = (input ? input.value : '') || 'http://localhost:8080/';
-            if (!url.startsWith('http://') && !url.startsWith('https://') && url !== 'about:blank') {
-                url = 'http://' + url;
-                if (input) input.value = url;
-            }
-            iframe.src = url;
+            const resolved = resolveTargetUrl(input ? input.value : '');
+            if (input && input.value !== resolved) input.value = resolved;
+            iframe.src = resolved;
         }
 
         function loadBrowserUrl(url) {
-            if (!url) return;
-            url = url.trim();
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                url = 'http://' + url;
-            }
+            const resolved = resolveTargetUrl(url);
             const input = document.getElementById('browser-url-input');
             const iframe = document.getElementById('live-browser-iframe');
-            if (input) input.value = url;
-            if (iframe) iframe.src = url;
+            if (input) input.value = resolved;
+            if (iframe) iframe.src = resolved;
         }
 
         function navigateBrowserBack() {
@@ -972,8 +1000,8 @@
 
         function openBrowserExternal() {
             const input = document.getElementById('browser-url-input');
-            const url = (input ? input.value : '') || 'http://127.0.0.1:8085/';
-            window.open(url, '_blank');
+            const resolved = resolveTargetUrl(input ? input.value : '');
+            window.open(resolved, '_blank');
         }
 
         function toggleBrowserAutoReload() {
