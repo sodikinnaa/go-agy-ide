@@ -997,6 +997,13 @@
                 return window.location.origin + url;
             }
 
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'http://' + url;
+            }
+
+            return url;
+        }
+
         function syncBrowserUrlOnLoad(iframe) {
             if (!iframe) return;
             try {
