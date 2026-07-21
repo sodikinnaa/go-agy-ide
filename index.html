@@ -476,8 +476,8 @@
             </div>
         </section>
 
-        <!-- Live Browser Preview Panel -->
-        <section id="panel-browser" class="hidden flex-1 flex flex-col bg-brand-panel border-l border-brand-border overflow-hidden transition-all duration-300 z-15 absolute inset-0 md:relative">
+        <!-- Live Browser Preview Panel (Always Open Side-by-Side) -->
+        <section id="panel-browser" class="flex-1 flex flex-col bg-brand-panel border-l border-brand-border overflow-hidden transition-all duration-300 z-15 absolute inset-0 md:relative">
             <!-- Browser Address Bar & Toolbar -->
             <div class="flex items-center justify-between bg-brand-dark px-3 py-1.5 border-b border-brand-border shrink-0 select-none space-x-2">
                 <div class="flex items-center space-x-1 shrink-0">
@@ -852,6 +852,14 @@
                 chatSendBtn.addEventListener('touchstart', triggerChatSubmit);
             }
 
+            // Restore browser panel state (Default to Open unless explicitly closed)
+            const savedState = localStorage.getItem('browserPanelOpen');
+            if (savedState !== 'false') {
+                toggleLiveBrowserPanel(true);
+            } else {
+                toggleLiveBrowserPanel(false);
+            }
+
             // Set up responsive tabs
             adjustLayoutForViewport();
         });
@@ -872,12 +880,18 @@
 
         window.addEventListener('resize', adjustLayoutForViewport);
 
-        // State for Live Browser Preview
-        let isBrowserPanelOpen = false;
+        // State for Live Browser Preview (Default Always Open)
+        let isBrowserPanelOpen = true;
         let isBrowserAutoReload = true;
 
-        function toggleLiveBrowserPanel() {
-            isBrowserPanelOpen = !isBrowserPanelOpen;
+        function toggleLiveBrowserPanel(forceState) {
+            if (typeof forceState === 'boolean') {
+                isBrowserPanelOpen = forceState;
+            } else {
+                isBrowserPanelOpen = !isBrowserPanelOpen;
+            }
+            localStorage.setItem('browserPanelOpen', isBrowserPanelOpen ? 'true' : 'false');
+
             const browserPanel = document.getElementById('panel-browser');
             const topbarBtn = document.getElementById('topbar-btn-browser');
             
