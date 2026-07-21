@@ -1277,14 +1277,42 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Strip frame-blocking security headers while forwarding Set-Cookie and response headers
+	// Process response headers
 	for k, vv := range resp.Header {
 		lowerKey := strings.ToLower(k)
 		if lowerKey == "x-frame-options" || lowerKey == "content-security-policy" || lowerKey == "content-security-policy-report-only" {
 			continue
 		}
+		if lowerKey == "set-cookie" {
+			for _, v := range vv {
+				// Rewrite cookies for iframe compatibility: remove SameSite=Lax/Strict and Domain restrictions
+				cookieVal := v
+				cookieVal = regexp.MustCompile(`(?i);\s*SameSite=(Lax|Strict)`).ReplaceAllString(cookieVal, "")
+				cookieVal = regexp.MustCompile(`(?i);\s*Domain=[^;]+`).ReplaceAllString(cookieVal, "")
+				w.Header().Add("Set-Cookie", cookieVal)
+			}
+			continue
+		}
 		for _, v := range vv {
 			w.Header().Add(k, v)
+		}
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err == nil {
+			htmlStr := string(bodyBytes)
+			baseURL := parsedTarget.Scheme + "://" + parsedTarget.Host
+
+			// Inject base tag if not present to resolve relative URLs
+			if !strings.Contains(htmlStr, "<base ") && strings.Contains(htmlStr, "<head>") {
+				htmlStr = strings.Replace(htmlStr, "<head>", "<head><base href=\""+baseURL+"/\">", 1)
+			}
+
+			w.WriteHeader(resp.StatusCode)
+			_, _ = w.Write([]byte(htmlStr))
+			return
 		}
 	}
 
