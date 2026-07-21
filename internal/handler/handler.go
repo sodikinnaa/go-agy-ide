@@ -1312,15 +1312,51 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 
 			proxyScript := `<script>
 (function() {
+    function resolveProxyUrl(urlStr) {
+        if (!urlStr || typeof urlStr !== 'string') return urlStr;
+        if (urlStr.startsWith('/api/browser/proxy') || urlStr.startsWith('data:') || urlStr.startsWith('blob:') || urlStr.startsWith('javascript:')) return urlStr;
+        try {
+            var absoluteUrl = new URL(urlStr, document.baseURI).href;
+            return '/api/browser/proxy?url=' + encodeURIComponent(absoluteUrl);
+        } catch(e) {
+            return urlStr;
+        }
+    }
+
+    // 1. Intercept Form Submissions
     document.addEventListener('submit', function(e) {
         var form = e.target;
-        if (form && form.action) {
-            var actionUrl = form.action;
-            if (!actionUrl.includes('/api/browser/proxy?url=')) {
-                form.action = '/api/browser/proxy?url=' + encodeURIComponent(actionUrl);
-            }
+        if (form) {
+            var rawAction = form.getAttribute('action') || form.action || window.location.href;
+            form.action = resolveProxyUrl(rawAction);
         }
     }, true);
+
+    // 2. Intercept Fetch API
+    var origFetch = window.fetch;
+    if (origFetch) {
+        window.fetch = function(resource, init) {
+            if (typeof resource === 'string') {
+                resource = resolveProxyUrl(resource);
+            } else if (resource && resource.url) {
+                try {
+                    resource = new Request(resolveProxyUrl(resource.url), resource);
+                } catch(e) {}
+            }
+            return origFetch.call(this, resource, init);
+        };
+    }
+
+    // 3. Intercept XMLHttpRequest
+    var origOpen = XMLHttpRequest.prototype.open;
+    if (origOpen) {
+        XMLHttpRequest.prototype.open = function(method, url, async, user, pass) {
+            if (url && typeof url === 'string') {
+                url = resolveProxyUrl(url);
+            }
+            return origOpen.call(this, method, url, async, user, pass);
+        };
+    }
 })();
 </script>`
 
