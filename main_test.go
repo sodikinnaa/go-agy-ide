@@ -26,9 +26,11 @@ func setupTestFixture(t *testing.T) (*workspace.Service, *auth.Service, *chat.Se
 		t.Fatalf("failed to create temp workspace: %v", err)
 	}
 
+	auth.HomeDirOverride = tempWS
 	workspaceSvc := workspace.NewService(tempWS)
 	authSvc := auth.NewService(tempWS)
-	authSvc.SetBypassDynamicAuthCheck(true)
+	authSvc.LoadPassword()
+	authSvc.SetBypassDynamicAuthCheck(false)
 
 	chatSvc := chat.NewService()
 	terminalSvc := terminal.NewService()
@@ -58,27 +60,26 @@ func TestGenerateRandomPassword(t *testing.T) {
 func TestCheckOAuthTokenExists(t *testing.T) {
 	_, authSvc, _, _, _, tempDir := setupTestFixture(t)
 	defer os.RemoveAll(tempDir)
+	authSvc.SetBypassDynamicAuthCheck(false)
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("failed to get home dir: %v", err)
+	homeDir := auth.HomeDirOverride
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("failed to get home dir: %v", err)
+		}
 	}
 
 	tokenDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
 	tokenPath := filepath.Join(tokenDir, "antigravity-oauth-token")
 
-	// Save original token status
-	originalExists := authSvc.CheckOAuthTokenExists()
-
 	// Backup original token if it exists
 	backupPath := tokenPath + ".test_bak"
-	if originalExists {
-		err := os.Rename(tokenPath, backupPath)
-		if err != nil {
-			t.Fatalf("failed to backup token: %v", err)
-		}
+	if _, err := os.Stat(tokenPath); err == nil {
+		_ = os.Rename(tokenPath, backupPath)
 		defer func() {
-			os.Rename(backupPath, tokenPath)
+			_ = os.Rename(backupPath, tokenPath)
 		}()
 	}
 
@@ -88,7 +89,7 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 	}
 
 	// Create dummy token
-	err = os.MkdirAll(tokenDir, 0755)
+	err := os.MkdirAll(tokenDir, 0755)
 	if err != nil {
 		t.Fatalf("failed to create token dir: %v", err)
 	}
@@ -160,19 +161,19 @@ func TestHandleQuotaSummaryUnauthorized(t *testing.T) {
 	sessionToken := authSvc.InitSession()
 
 	// Temporarily simulate missing token
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("failed to get home dir: %v", err)
+	homeDir := auth.HomeDirOverride
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("failed to get home dir: %v", err)
+		}
 	}
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 
-	originalExists := authSvc.CheckOAuthTokenExists()
 	backupPath := tokenPath + ".test_bak"
-	if originalExists {
-		err := os.Rename(tokenPath, backupPath)
-		if err != nil {
-			t.Fatalf("failed to backup token: %v", err)
-		}
+	if _, err := os.Stat(tokenPath); err == nil {
+		_ = os.Rename(tokenPath, backupPath)
 		defer func() {
 			_ = os.Rename(backupPath, tokenPath)
 		}()
@@ -197,21 +198,21 @@ func TestHandleListFilesUnauthorized(t *testing.T) {
 	sessionToken := authSvc.InitSession()
 
 	// Temporarily simulate missing token
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatalf("failed to get home dir: %v", err)
+	homeDir := auth.HomeDirOverride
+	if homeDir == "" {
+		var err error
+		homeDir, err = os.UserHomeDir()
+		if err != nil {
+			t.Fatalf("failed to get home dir: %v", err)
+		}
 	}
 	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 
-	originalExists := authSvc.CheckOAuthTokenExists()
 	backupPath := tokenPath + ".test_bak"
-	if originalExists {
-		err := os.Rename(tokenPath, backupPath)
-		if err != nil {
-			t.Fatalf("failed to backup token: %v", err)
-		}
+	if _, err := os.Stat(tokenPath); err == nil {
+		_ = os.Rename(tokenPath, backupPath)
 		defer func() {
-			os.Rename(backupPath, tokenPath)
+			_ = os.Rename(backupPath, tokenPath)
 		}()
 	}
 
@@ -757,7 +758,7 @@ func TestStartGoogleAuthAndSubmitGoogleAuthCode(t *testing.T) {
 
 	defer func() {
 		// Restore everything in deferred cleanup
-		if backupErr == nil {
+		if backupErr == nil && !strings.Contains(backupVal, "mock-") {
 			_ = keyring.Set("gemini", "antigravity", backupVal)
 		} else {
 			_ = keyring.Delete("gemini", "antigravity")

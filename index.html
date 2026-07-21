@@ -95,23 +95,81 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 
     <style>
-        /* Essential Fallback Utility CSS */
+        /* Comprehensive Fallback Utility & Layout CSS */
+        *, ::before, ::after { box-sizing: border-box; }
         html, body { height: 100%; margin: 0; padding: 0; background-color: #090a15; color: #f1f5f9; overscroll-behavior-y: contain; }
         .hidden { display: none !important; }
         .flex { display: flex; }
+        .inline-flex { display: inline-flex; }
+        .grid { display: grid; }
         .flex-col { flex-direction: column; }
+        .flex-row { flex-direction: row; }
+        .flex-1 { flex: 1 1 0%; }
+        .shrink-0 { flex-shrink: 0; }
+        .grow { flex-grow: 1; }
         .items-center { align-items: center; }
+        .items-start { align-items: flex-start; }
+        .items-end { align-items: flex-end; }
         .justify-center { justify-content: center; }
         .justify-between { justify-content: space-between; }
+        .justify-end { justify-content: flex-end; }
         .h-full { height: 100%; }
         .w-full { width: 100%; }
+        .h-screen { height: 100vh; }
+        .w-screen { width: 100vw; }
         .relative { position: relative; }
         .absolute { position: absolute; }
+        .fixed { position: fixed; }
+        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
         .bg-brand-dark { background-color: #090a15; }
         .bg-brand-panel { background-color: #111326; }
+        .bg-brand-border { background-color: #1f2347; }
         .border-brand-border { border-color: #1f2347; }
+        .border-brand-accent { border-color: #a855f7; }
         .text-brand-accent { color: #a855f7; }
         .bg-brand-600 { background-color: #7c3aed; }
+        .bg-brand-700 { background-color: #6d28d9; }
+        .border { border-style: solid; border-width: 1px; }
+        .border-t { border-top-style: solid; border-top-width: 1px; }
+        .border-b { border-bottom-style: solid; border-bottom-width: 1px; }
+        .border-r { border-right-style: solid; border-right-width: 1px; }
+        .border-l { border-left-style: solid; border-left-width: 1px; }
+        .rounded { border-radius: 0.25rem; }
+        .rounded-md { border-radius: 0.375rem; }
+        .rounded-lg { border-radius: 0.5rem; }
+        .rounded-xl { border-radius: 0.75rem; }
+        .rounded-2xl { border-radius: 1rem; }
+        .rounded-full { border-radius: 9999px; }
+        .p-1 { padding: 0.25rem; }
+        .p-2 { padding: 0.5rem; }
+        .p-3 { padding: 0.75rem; }
+        .p-4 { padding: 1rem; }
+        .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
+        .px-3 { padding-left: 0.75rem; padding-right: 0.75rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .py-1 { padding-top: 0.25rem; padding-bottom: 0.25rem; }
+        .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
+        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .gap-1 { gap: 0.25rem; }
+        .gap-2 { gap: 0.5rem; }
+        .gap-3 { gap: 0.75rem; }
+        .gap-4 { gap: 1rem; }
+        .space-x-1 > * + * { margin-left: 0.25rem; }
+        .space-x-2 > * + * { margin-left: 0.5rem; }
+        .space-x-3 > * + * { margin-left: 0.75rem; }
+        .space-y-1 > * + * { margin-top: 0.25rem; }
+        .space-y-2 > * + * { margin-top: 0.5rem; }
+        .space-y-3 > * + * { margin-top: 0.75rem; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .overflow-hidden { overflow: hidden; }
+        .overflow-y-auto { overflow-y: auto; }
+        .overflow-x-auto { overflow-x: auto; }
+        .cursor-pointer { cursor: pointer; }
+        .select-none { user-select: none; }
+        .transition { transition-property: color, background-color, border-color, transform, opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
+        .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3); }
+        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
+        .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #090a15;

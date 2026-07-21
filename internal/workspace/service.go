@@ -286,3 +286,112 @@ func (s *Service) CreateFileOrFolder(pathParam string, isDir bool) error {
 	}
 	return f.Close()
 }
+
+type SearchMatch struct {
+	LineNumber int    `json:"lineNumber"`
+	LineText   string `json:"lineText"`
+}
+
+type FileSearchResult struct {
+	Path    string        `json:"path"`
+	Name    string        `json:"name"`
+	Matches []SearchMatch `json:"matches"`
+}
+
+func isBinaryExtension(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".png", ".jpg", ".jpeg", ".gif", ".ico", ".svg", ".webp",
+		".exe", ".bin", ".zip", ".tar", ".gz", ".7z", ".rar",
+		".pdf", ".mp4", ".mp3", ".wav", ".avi", ".mov",
+		".woff", ".woff2", ".ttf", ".eot",
+		".so", ".dylib", ".dll", ".a", ".o", ".pyc", ".db", ".sqlite":
+		return true
+	default:
+		return false
+	}
+}
+
+// SearchWorkspace searches for files matching filename or content query
+func (s *Service) SearchWorkspace(query string) ([]FileSearchResult, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return []FileSearchResult{}, nil
+	}
+
+	queryLower := strings.ToLower(query)
+
+	files, err := s.ListFiles()
+	if err != nil {
+		return nil, err
+	}
+
+	results := []FileSearchResult{}
+	totalMatches := 0
+	const maxTotalMatches = 200
+	const maxMatchesPerFile = 20
+
+	for _, file := range files {
+		if file.IsDir {
+			continue
+		}
+
+		if totalMatches >= maxTotalMatches {
+			break
+		}
+
+		pathLower := strings.ToLower(file.Path)
+		nameLower := strings.ToLower(file.Name)
+
+		nameMatches := strings.Contains(pathLower, queryLower) || strings.Contains(nameLower, queryLower)
+
+		var matches []SearchMatch
+
+		if !isBinaryExtension(filepath.Ext(file.Name)) && file.Size < 2*1024*1024 {
+			contentBytes, err := s.ReadFile(file.Path)
+			if err == nil {
+				isBinary := false
+				checkLen := 512
+				if len(contentBytes) < checkLen {
+					checkLen = len(contentBytes)
+				}
+				for i := 0; i < checkLen; i++ {
+					if contentBytes[i] == 0 {
+						isBinary = true
+						break
+					}
+				}
+
+				if !isBinary {
+					lines := strings.Split(string(contentBytes), "\n")
+					for lineIdx, line := range lines {
+						if strings.Contains(strings.ToLower(line), queryLower) {
+							lineTrimmed := line
+							if len(lineTrimmed) > 200 {
+								lineTrimmed = lineTrimmed[:200] + "..."
+							}
+							matches = append(matches, SearchMatch{
+								LineNumber: lineIdx + 1,
+								LineText:   strings.TrimSpace(lineTrimmed),
+							})
+							totalMatches++
+							if len(matches) >= maxMatchesPerFile || totalMatches >= maxTotalMatches {
+								break
+							}
+						}
+					}
+				}
+			}
+		}
+
+		if nameMatches || len(matches) > 0 {
+			results = append(results, FileSearchResult{
+				Path:    file.Path,
+				Name:    file.Name,
+				Matches: matches,
+			})
+		}
+	}
+
+	return results, nil
+}
+

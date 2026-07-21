@@ -132,6 +132,7 @@ func main() {
 
 	// Workspace and project files APIs
 	http.HandleFunc("/api/files", h.AuthMiddleware(h.HandleListFiles))
+	http.HandleFunc("/api/workspace/search", h.AuthMiddleware(h.HandleSearchWorkspace))
 	http.HandleFunc("/api/file", h.AuthMiddleware(h.HandleFileOperations))
 	http.HandleFunc("/api/file/create", h.AuthMiddleware(h.HandleCreateFileOrFolder))
 	http.HandleFunc("/api/chat", h.AuthMiddleware(h.HandleChatStream))

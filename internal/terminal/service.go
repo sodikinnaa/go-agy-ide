@@ -441,21 +441,24 @@ func (s *Service) GetModelsList() ([]string, error) {
 				if strings.Contains(trimmed, "Fetching") || strings.Contains(trimmed, "⠋") || strings.Contains(trimmed, "⠙") || strings.Contains(trimmed, "⠹") || strings.Contains(trimmed, "⠸") || strings.Contains(trimmed, "⠼") || strings.Contains(trimmed, "⠴") || strings.Contains(trimmed, "⠦") || strings.Contains(trimmed, "⠧") || strings.Contains(trimmed, "⠇") || strings.Contains(trimmed, "⠏") {
 					continue
 				}
-				models = append(models, trimmed)
+				fields := strings.Fields(trimmed)
+				if len(fields) > 0 {
+					models = append(models, fields[0])
+				}
 			}
 		}
 	}
 
 	if len(models) == 0 {
 		models = []string{
-			"Gemini 3.5 Flash (Medium)",
-			"Gemini 3.5 Flash (High)",
-			"Gemini 3.5 Flash (Low)",
-			"Gemini 3.1 Pro (Low)",
-			"Gemini 3.1 Pro (High)",
-			"Claude Sonnet 4.6 (Thinking)",
-			"Claude Opus 4.6 (Thinking)",
-			"GPT-OSS 120B (Medium)",
+			"gemini-3.5-flash-high",
+			"gemini-3.5-flash-medium",
+			"gemini-3.5-flash-low",
+			"gemini-3.1-pro-high",
+			"gemini-3.1-pro-low",
+			"claude-sonnet-4-6",
+			"claude-opus-4-6-thinking",
+			"gpt-oss-120b-medium",
 		}
 	}
 

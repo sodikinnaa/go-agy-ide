@@ -20,7 +20,7 @@ import (
 
 const AppVersion = "v1.5.2"
 
-var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
+var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
 type EmbeddedHTML struct {
 	IndexHTML        string
