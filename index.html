@@ -352,7 +352,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.5.4</span>
+                    <span class="text-[10px] text-slate-400">v1.5.5</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -511,6 +511,17 @@
 
                 <!-- Viewport Preset & Tools -->
                 <div class="flex items-center space-x-1 shrink-0">
+                    <!-- CSP Proxy Toggle -->
+                    <button id="browser-proxy-btn" onclick="toggleBrowserProxyMode()" class="px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Bypass CSP & X-Frame-Options (Proxy Mode)">
+                        <i data-lucide="shield" class="w-3 h-3 text-brand-accent"></i>
+                        <span class="hidden xl:inline">Proxy</span>
+                    </button>
+                    <!-- DevTools Drawer Toggle -->
+                    <button id="browser-devtools-btn" onclick="toggleBrowserDevTools()" class="px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Buka DevTools Console & Inspector">
+                        <i data-lucide="terminal" class="w-3 h-3 text-emerald-400"></i>
+                        <span class="hidden xl:inline">DevTools</span>
+                        <span id="browser-console-badge" class="hidden px-1 py-0.2 bg-red-500/80 text-white text-[9px] rounded-full font-bold">0</span>
+                    </button>
                     <!-- Auto Reload Toggle -->
                     <button id="browser-auto-reload-btn" onclick="toggleBrowserAutoReload()" class="px-2 py-1 bg-brand-accent/20 border border-brand-accent/40 text-brand-accent rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Auto Reload pas simpan file">
                         <i data-lucide="zap" class="w-3 h-3"></i>
@@ -543,10 +554,35 @@
                 </div>
             </div>
 
-            <!-- Iframe Container -->
-            <div class="flex-1 bg-slate-950 flex justify-center items-center overflow-hidden relative">
-                <div id="browser-viewport-wrapper" class="w-full h-full transition-all duration-300 flex justify-center items-center">
+            <!-- Iframe Container & Viewport -->
+            <div class="flex-1 bg-slate-950 flex flex-col justify-center items-center overflow-hidden relative">
+                <div id="browser-viewport-wrapper" class="w-full h-full transition-all duration-300 flex justify-center items-center relative flex-1">
                     <iframe id="live-browser-iframe" onload="syncBrowserUrlOnLoad(this)" src="about:blank" class="w-full h-full border-0 bg-white shadow-2xl transition-all duration-300"></iframe>
+                </div>
+
+                <!-- DevTools Console Drawer -->
+                <div id="browser-devtools-drawer" class="hidden w-full h-44 bg-slate-950 border-t border-brand-border flex flex-col shrink-0 text-xs font-mono select-text transition-all duration-300">
+                    <div class="px-3 py-1.5 bg-brand-dark border-b border-brand-border flex items-center justify-between shrink-0 select-none">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-semibold text-slate-300 flex items-center space-x-1">
+                                <i data-lucide="terminal" class="w-3.5 h-3.5 text-emerald-400 inline"></i>
+                                <span>DevTools Console</span>
+                            </span>
+                            <span id="browser-devtools-status" class="text-[10px] text-slate-500">Live inspection active</span>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="clearBrowserConsole()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear Console">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="toggleBrowserDevTools()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Close DevTools">
+                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Console Logs Container -->
+                    <div id="browser-console-logs" class="flex-1 overflow-y-auto p-2 space-y-1 bg-black/90 font-mono text-[11px] leading-relaxed select-text">
+                        <div class="text-slate-500 italic text-[10px] py-1">[DevTools] Live browser console stream initialized.</div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -969,6 +1005,82 @@
             lucide.createIcons();
         }
 
+        let isBrowserProxyMode = false;
+        let isBrowserDevToolsOpen = false;
+        let browserConsoleLogCount = 0;
+
+        function toggleBrowserProxyMode() {
+            isBrowserProxyMode = !isBrowserProxyMode;
+            const btn = document.getElementById('browser-proxy-btn');
+            if (btn) {
+                if (isBrowserProxyMode) {
+                    btn.className = "px-2 py-1 bg-brand-accent/20 border border-brand-accent/40 text-brand-accent rounded text-[11px] font-semibold flex items-center space-x-1 transition";
+                    btn.title = "Proxy Mode AKTIF (Bypassing CSP & X-Frame-Options)";
+                } else {
+                    btn.className = "px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition";
+                    btn.title = "Proxy Mode Nonaktif";
+                }
+            }
+            refreshLiveBrowser();
+        }
+
+        function toggleBrowserDevTools() {
+            isBrowserDevToolsOpen = !isBrowserDevToolsOpen;
+            const drawer = document.getElementById('browser-devtools-drawer');
+            const btn = document.getElementById('browser-devtools-btn');
+            if (drawer) {
+                if (isBrowserDevToolsOpen) {
+                    drawer.classList.remove('hidden');
+                } else {
+                    drawer.classList.add('hidden');
+                }
+            }
+            lucide.createIcons();
+        }
+
+        function appendBrowserConsoleLog(type, message) {
+            const container = document.getElementById('browser-console-logs');
+            const badge = document.getElementById('browser-console-badge');
+            if (!container) return;
+
+            const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
+            const logRow = document.createElement('div');
+            
+            let colorClass = "text-slate-300";
+            let typeLabel = "LOG";
+
+            if (type === 'error') {
+                colorClass = "text-red-400 bg-red-950/30 px-1 py-0.5 rounded";
+                typeLabel = "ERROR";
+                browserConsoleLogCount++;
+                if (badge) {
+                    badge.innerText = browserConsoleLogCount;
+                    badge.classList.remove('hidden');
+                }
+            } else if (type === 'warn') {
+                colorClass = "text-amber-300";
+                typeLabel = "WARN";
+            } else if (type === 'info') {
+                colorClass = "text-sky-300";
+                typeLabel = "INFO";
+            }
+
+            logRow.className = `flex items-start space-x-2 ${colorClass}`;
+            logRow.innerHTML = `<span class="text-slate-600 shrink-0 text-[10px]">[${time}]</span><span class="font-bold text-[10px] shrink-0">${typeLabel}:</span><span class="break-all flex-1">${escapeHtml(message)}</span>`;
+            container.appendChild(logRow);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearBrowserConsole() {
+            const container = document.getElementById('browser-console-logs');
+            const badge = document.getElementById('browser-console-badge');
+            if (container) {
+                container.innerHTML = '<div class="text-slate-500 italic text-[10px] py-1">[DevTools] Console cleared.</div>';
+            }
+            browserConsoleLogCount = 0;
+            if (badge) badge.classList.add('hidden');
+        }
+
         function resolveTargetUrl(rawUrl) {
             let url = (rawUrl || '').trim();
             const serverHost = window.location.hostname || 'localhost';
@@ -981,24 +1093,20 @@
 
             if (!url || url === 'about:blank') {
                 if (isLocalServer) {
-                    return 'http://' + serverHost + ':8080/';
+                    url = 'http://' + serverHost + ':8080/';
                 } else {
-                    return window.location.origin + '/';
+                    url = window.location.origin + '/';
                 }
-            }
-
-            // Handles port shorthand like ":8080" or ":3000/app"
-            if (url.startsWith(':')) {
-                return (isLocalServer ? 'http://' : window.location.protocol + '//') + serverHost + url;
-            }
-
-            // Handles relative paths like "/hello.txt"
-            if (url.startsWith('/')) {
-                return window.location.origin + url;
-            }
-
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            } else if (url.startsWith(':')) {
+                url = (isLocalServer ? 'http://' : window.location.protocol + '//') + serverHost + url;
+            } else if (url.startsWith('/')) {
+                url = window.location.origin + url;
+            } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
                 url = 'http://' + url;
+            }
+
+            if (isBrowserProxyMode && !url.includes('/api/browser/proxy?url=')) {
+                return '/api/browser/proxy?url=' + encodeURIComponent(url);
             }
 
             return url;
@@ -1010,10 +1118,28 @@
                 const currentHref = iframe.contentWindow.location.href;
                 if (currentHref && currentHref !== 'about:blank') {
                     const input = document.getElementById('browser-url-input');
-                    if (input && input.value !== currentHref) input.value = currentHref;
+                    let displayUrl = currentHref;
+                    if (displayUrl.includes('/api/browser/proxy?url=')) {
+                        displayUrl = decodeURIComponent(displayUrl.split('/api/browser/proxy?url=')[1] || '');
+                    }
+                    if (input && input.value !== displayUrl) input.value = displayUrl;
+                }
+
+                // Inject console bridge if same-origin
+                const win = iframe.contentWindow;
+                if (win && !win.__devToolsBridgeInjected) {
+                    win.__devToolsBridgeInjected = true;
+                    const origLog = win.console.log;
+                    const origWarn = win.console.warn;
+                    const origErr = win.console.error;
+
+                    win.console.log = function(...args) { origLog.apply(win.console, args); appendBrowserConsoleLog('log', args.join(' ')); };
+                    win.console.warn = function(...args) { origWarn.apply(win.console, args); appendBrowserConsoleLog('warn', args.join(' ')); };
+                    win.console.error = function(...args) { origErr.apply(win.console, args); appendBrowserConsoleLog('error', args.join(' ')); };
+                    win.addEventListener('error', function(e) { appendBrowserConsoleLog('error', e.message + ' at ' + e.filename + ':' + e.lineno); });
                 }
             } catch (e) {
-                // Ignore cross-origin security restrictions
+                // Cross-origin: security boundary
             }
         }
 
@@ -3725,7 +3851,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.5.4";
+                const current = "v1.5.5";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -4304,7 +4430,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.4</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.5</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

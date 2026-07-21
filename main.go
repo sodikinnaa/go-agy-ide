@@ -152,6 +152,7 @@ func main() {
 	http.HandleFunc("/api/openai/models", h.AuthMiddleware(h.HandleOpenAIModels))
 	http.HandleFunc("/preview/", h.AuthMiddleware(h.HandlePreviewFile))
 	http.HandleFunc("/api/webhook", h.HandleGithubWebhook)
+	http.HandleFunc("/api/browser/proxy", h.AuthMiddleware(h.HandleBrowserProxy))
 	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
 	http.HandleFunc("/api/github/releases", h.AuthMiddleware(h.HandleGithubReleases))
 

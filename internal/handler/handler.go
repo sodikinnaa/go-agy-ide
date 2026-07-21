@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.5.4"
+const AppVersion = "v1.5.5"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -113,7 +113,8 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				r.URL.Path == "/api/openai/models" ||
 				r.URL.Path == "/api/auth/pwd/update" ||
 				r.URL.Path == "/api/github/releases" ||
-				r.URL.Path == "/api/update"
+				r.URL.Path == "/api/update" ||
+				r.URL.Path == "/api/browser/proxy"
 			isGoogleLoginPage := r.URL.Path == "/login"
 			isOpenAIConfigPage := r.URL.Path == "/"
 
@@ -1217,5 +1218,53 @@ func (h *Handler) HandlePorts(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(ports)
+}
+
+// HandleBrowserProxy proxies external websites for the embedded Live Browser engine,
+// bypassing restrictive X-Frame-Options and Content-Security-Policy frame-ancestors headers.
+func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
+	targetURL := r.URL.Query().Get("url")
+	if targetURL == "" {
+		http.Error(w, "URL parameter missing", http.StatusBadRequest)
+		return
+	}
+
+	if !strings.HasPrefix(targetURL, "http://") && !strings.HasPrefix(targetURL, "https://") {
+		targetURL = "http://" + targetURL
+	}
+
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		http.Error(w, "Invalid target URL: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	req.Header.Set("User-Agent", r.UserAgent())
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Proxy request failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Strip frame-blocking security headers
+	for k, vv := range resp.Header {
+		lowerKey := strings.ToLower(k)
+		if lowerKey == "x-frame-options" || lowerKey == "content-security-policy" || lowerKey == "content-security-policy-report-only" {
+			continue
+		}
+		for _, v := range vv {
+			w.Header().Add(k, v)
+		}
+	}
+
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }
 
