@@ -965,13 +965,23 @@
             let url = (rawUrl || '').trim();
             const serverHost = window.location.hostname || 'localhost';
 
+            const isLocalServer = serverHost === 'localhost' || 
+                                 serverHost === '127.0.0.1' || 
+                                 /^192\.168\./.test(serverHost) || 
+                                 /^10\./.test(serverHost) || 
+                                 /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(serverHost);
+
             if (!url || url === 'about:blank') {
-                return 'http://' + serverHost + ':8080/';
+                if (isLocalServer) {
+                    return 'http://' + serverHost + ':8080/';
+                } else {
+                    return window.location.origin + '/';
+                }
             }
 
             // Handles port shorthand like ":8080" or ":3000/app"
             if (url.startsWith(':')) {
-                return 'http://' + serverHost + url;
+                return (isLocalServer ? 'http://' : window.location.protocol + '//') + serverHost + url;
             }
 
             // Handles relative paths like "/hello.txt"
@@ -980,17 +990,7 @@
             }
 
             if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                if (url.startsWith('localhost:') || url.startsWith('127.0.0.1:')) {
-                    const portAndPath = url.substring(url.indexOf(':'));
-                    url = 'http://' + serverHost + portAndPath;
-                } else {
-                    url = 'http://' + url;
-                }
-            } else {
-                if (serverHost !== 'localhost' && serverHost !== '127.0.0.1') {
-                    url = url.replace('://localhost:', '://' + serverHost + ':')
-                             .replace('://127.0.0.1:', '://' + serverHost + ':');
-                }
+                url = 'http://' + url;
             }
 
             return url;
