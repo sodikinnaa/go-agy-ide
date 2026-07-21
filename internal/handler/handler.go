@@ -239,6 +239,15 @@ func (h *Handler) HandlePasswordUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token := h.authSvc.InitSession()
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_password",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   86400 * 30, // 30 days
+	})
+
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("Sandi keamanan kasil dianyari"))
 }

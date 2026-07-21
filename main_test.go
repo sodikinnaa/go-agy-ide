@@ -313,6 +313,38 @@ func TestHandlePasswordAuth(t *testing.T) {
 	}
 }
 
+func TestPasswordUpdateKeepsSessionLoggedIn(t *testing.T) {
+	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/pwd/update", strings.NewReader("new_password=brandnewpassword123"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.HandlePasswordUpdate(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200 for password update, got %d", rr.Code)
+	}
+
+	cookies := rr.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session_password" {
+			sessionCookie = c
+			break
+		}
+	}
+
+	if sessionCookie == nil {
+		t.Fatalf("expected session_password cookie to be returned after updating password")
+	}
+
+	if !authSvc.ValidateSession(sessionCookie.Value) {
+		t.Errorf("expected updated session cookie to validate against auth service")
+	}
+}
+
 func TestHandleChatHistoryList(t *testing.T) {
 	workspaceSvc, authSvc, _, _, h, tempDir := setupTestFixture(t)
 	defer os.RemoveAll(tempDir)
