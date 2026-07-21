@@ -189,16 +189,44 @@ func (s *Service) CheckOAuthTokenExists() bool {
 		}
 	}
 
-	// 1. Check active keyring slot
+	// 1. Check active keyring / token file / pool fallback & auto-restore
+	return s.EnsureActiveAccountFromPool()
+}
+
+func (s *Service) EnsureActiveAccountFromPool() bool {
+	homeDir, err := getHomeDir()
+	tokenPath := ""
+	if err == nil {
+		tokenPath = filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if fi, err := os.Stat(tokenPath); err == nil && fi.Size() > 0 {
+			return true
+		}
+	}
+
 	val, err := keyring.Get("gemini", "antigravity")
-	if err == nil && val != "" {
+	if err == nil && val != "" && HomeDirOverride == "" {
+		if tokenPath != "" {
+			_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		}
 		return true
 	}
 
-	// 2. Check pool fallback
 	pool, err := s.LoadAccountsPool()
 	if err == nil && len(pool) > 0 {
-		return true
+		firstAcc := pool[0]
+		if firstAcc.KeyringValue != "" {
+			setErr := keyring.Set("gemini", "antigravity", firstAcc.KeyringValue)
+			if setErr != nil && tokenPath != "" {
+				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+				_ = os.WriteFile(tokenPath, []byte(firstAcc.KeyringValue), 0600)
+			} else if tokenPath != "" {
+				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+				_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			}
+			log.Printf("[AUTH] Keyring/token file empty. Auto-restored account '%s' from pool.", MaskEmail(firstAcc.Email))
+			return true
+		}
 	}
 
 	return false

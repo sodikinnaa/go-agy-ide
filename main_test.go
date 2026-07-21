@@ -105,6 +105,36 @@ func TestCheckOAuthTokenExists(t *testing.T) {
 	}
 }
 
+func TestAutoRestoreAccountFromPool(t *testing.T) {
+	_, authSvc, _, _, _, tempDir := setupTestFixture(t)
+	defer os.RemoveAll(tempDir)
+	authSvc.SetBypassDynamicAuthCheck(false)
+
+	mockVal := `{"token":{"access_token":"mock_access_token_123"}}`
+	pool := []auth.AccountEntry{
+		{
+			Email:        "user@example.com",
+			KeyringValue: mockVal,
+		},
+	}
+	err := authSvc.SaveAccountsPool(pool)
+	if err != nil {
+		t.Fatalf("failed to save accounts pool: %v", err)
+	}
+
+	homeDir := auth.HomeDirOverride
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+	_ = os.Remove(tokenPath)
+
+	if !authSvc.CheckOAuthTokenExists() {
+		t.Errorf("expected CheckOAuthTokenExists to return true when account is available in pool")
+	}
+
+	if fi, err := os.Stat(tokenPath); err != nil || fi.Size() == 0 {
+		t.Errorf("expected token file to be restored from pool, but was not found or 0 bytes")
+	}
+}
+
 func TestHandleAuthStatus(t *testing.T) {
 	_, authSvc, _, _, h, tempDir := setupTestFixture(t)
 	defer os.RemoveAll(tempDir)
