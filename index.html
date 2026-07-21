@@ -522,6 +522,10 @@
                             <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
                         </button>
                     </div>
+                    <!-- Fullscreen Toggle -->
+                    <button id="browser-fullscreen-btn" onclick="toggleBrowserFullscreen()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Layar Kebak / Full Screen Browser (Alt+F)">
+                        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                    </button>
                     <!-- Open in External Tab -->
                     <button onclick="openBrowserExternal()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Buka ing Tab Anyar">
                         <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
@@ -984,10 +988,49 @@
             }
         }
 
+        let isBrowserFullscreen = false;
+
+        function toggleBrowserFullscreen(forceState) {
+            if (typeof forceState === 'boolean') {
+                isBrowserFullscreen = forceState;
+            } else {
+                isBrowserFullscreen = !isBrowserFullscreen;
+            }
+
+            const browserPanel = document.getElementById('panel-browser');
+            const btn = document.getElementById('browser-fullscreen-btn');
+
+            if (!browserPanel) return;
+
+            if (isBrowserFullscreen) {
+                browserPanel.classList.add('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
+                browserPanel.classList.remove('relative', 'flex-1', 'border-l');
+                if (btn) {
+                    btn.innerHTML = '<i data-lucide="minimize-2" class="w-3.5 h-3.5 text-brand-accent"></i>';
+                    btn.title = "Keluar saka Layar Kebak (Esc / Alt+F)";
+                }
+            } else {
+                browserPanel.classList.remove('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
+                browserPanel.classList.add('relative', 'flex-1', 'border-l');
+                if (btn) {
+                    btn.innerHTML = '<i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>';
+                    btn.title = "Layar Kebak / Full Screen Browser (Alt+F)";
+                }
+            }
+            lucide.createIcons();
+        }
+
         window.addEventListener('keydown', (e) => {
             if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'b') {
                 e.preventDefault();
                 toggleLiveBrowserPanel();
+            }
+            if (e.altKey && e.key.toLowerCase() === 'f') {
+                e.preventDefault();
+                toggleBrowserFullscreen();
+            }
+            if (e.key === 'Escape' && isBrowserFullscreen) {
+                toggleBrowserFullscreen(false);
             }
         });
 
