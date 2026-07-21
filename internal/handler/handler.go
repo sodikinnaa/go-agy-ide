@@ -1285,10 +1285,15 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		if lowerKey == "set-cookie" {
 			for _, v := range vv {
-				// Rewrite cookies for iframe compatibility: remove SameSite=Lax/Strict and Domain restrictions
 				cookieVal := v
-				cookieVal = regexp.MustCompile(`(?i);\s*SameSite=(Lax|Strict)`).ReplaceAllString(cookieVal, "")
+				// Remove SameSite restrictions for iframe cookie persistence
+				cookieVal = regexp.MustCompile(`(?i);\s*SameSite=[^;]+`).ReplaceAllString(cookieVal, "")
+				// Remove Domain restriction
 				cookieVal = regexp.MustCompile(`(?i);\s*Domain=[^;]+`).ReplaceAllString(cookieVal, "")
+				// Remove Secure flag on HTTP so browsers accept cookies on localhost/HTTP origins
+				if r.TLS == nil {
+					cookieVal = regexp.MustCompile(`(?i);\s*Secure`).ReplaceAllString(cookieVal, "")
+				}
 				w.Header().Add("Set-Cookie", cookieVal)
 			}
 			continue
@@ -1305,9 +1310,24 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 			htmlStr := string(bodyBytes)
 			baseURL := parsedTarget.Scheme + "://" + parsedTarget.Host
 
-			// Inject base tag if not present to resolve relative URLs
-			if !strings.Contains(htmlStr, "<base ") && strings.Contains(htmlStr, "<head>") {
-				htmlStr = strings.Replace(htmlStr, "<head>", "<head><base href=\""+baseURL+"/\">", 1)
+			proxyScript := `<script>
+(function() {
+    document.addEventListener('submit', function(e) {
+        var form = e.target;
+        if (form && form.action) {
+            var actionUrl = form.action;
+            if (!actionUrl.includes('/api/browser/proxy?url=')) {
+                form.action = '/api/browser/proxy?url=' + encodeURIComponent(actionUrl);
+            }
+        }
+    }, true);
+})();
+</script>`
+
+			// Inject base tag and form submission interceptor script
+			if strings.Contains(htmlStr, "<head>") {
+				injection := "<head><base href=\"" + baseURL + "/\">" + proxyScript
+				htmlStr = strings.Replace(htmlStr, "<head>", injection, 1)
 			}
 
 			w.WriteHeader(resp.StatusCode)
