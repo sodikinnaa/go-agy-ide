@@ -871,16 +871,54 @@
             adjustLayoutForViewport();
         });
 
+        function updateCenterPanelsLayout() {
+            const codePanel = document.getElementById('panel-code');
+            const browserPanel = document.getElementById('panel-browser');
+            if (!codePanel || !browserPanel) return;
+
+            if (window.innerWidth >= 768) {
+                codePanel.classList.remove('w-full', 'h-full', 'z-30');
+                browserPanel.classList.remove('w-full', 'h-full', 'z-30');
+                
+                const hasOpenFile = !!activeFilePath;
+
+                if (!hasOpenFile) {
+                    // No code file open: Hide editor, Live Browser takes 100% full width!
+                    codePanel.classList.add('hidden');
+                    if (isBrowserPanelOpen) {
+                        browserPanel.classList.remove('hidden');
+                        browserPanel.className = "flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-15 w-full";
+                    } else {
+                        browserPanel.classList.add('hidden');
+                    }
+                } else {
+                    // File IS open in editor:
+                    codePanel.classList.remove('hidden');
+                    codePanel.className = "flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-10 md:flex";
+
+                    if (isBrowserPanelOpen) {
+                        browserPanel.classList.remove('hidden');
+                        browserPanel.className = "flex-1 flex flex-col bg-brand-panel border-l border-brand-border overflow-hidden transition-all duration-300 z-15 relative";
+                    } else {
+                        browserPanel.classList.add('hidden');
+                    }
+                }
+            } else {
+                switchTab(currentTab);
+            }
+        }
+
         function adjustLayoutForViewport() {
             if (window.innerWidth >= 768) {
-                // Desktop mode: Reset views so they are all visible as configured in html grid/flex
-                document.getElementById('panel-files').style.transform = 'none';
-                document.getElementById('panel-code').style.transform = 'none';
-                document.getElementById('panel-chat').style.transform = 'none';
-                document.getElementById('panel-bottom').classList.remove('hidden');
-                document.getElementById('panel-bottom').style.transform = 'none';
+                const files = document.getElementById('panel-files');
+                const chat = document.getElementById('panel-chat');
+                const bottom = document.getElementById('panel-bottom');
+                if (files) { files.classList.remove('hidden'); files.style.transform = 'none'; files.style.display = ''; }
+                if (chat) { chat.classList.remove('hidden'); chat.style.transform = 'none'; chat.style.display = ''; }
+                if (bottom) { bottom.classList.remove('hidden'); bottom.style.transform = 'none'; bottom.style.display = ''; }
+
+                updateCenterPanelsLayout();
             } else {
-                // Mobile: Hide all panels except active tab
                 switchTab(currentTab);
             }
         }
@@ -899,26 +937,26 @@
             }
             localStorage.setItem('browserPanelOpen', isBrowserPanelOpen ? 'true' : 'false');
 
-            const browserPanel = document.getElementById('panel-browser');
             const topbarBtn = document.getElementById('topbar-btn-browser');
-            
-            if (isBrowserPanelOpen) {
-                browserPanel.classList.remove('hidden');
-                if (topbarBtn) {
+            if (topbarBtn) {
+                if (isBrowserPanelOpen) {
                     topbarBtn.classList.add('bg-brand-accent/30', 'border-brand-accent');
-                }
-                if (window.innerWidth < 768) {
-                    switchTab('browser');
-                }
-                refreshLiveBrowser();
-            } else {
-                browserPanel.classList.add('hidden');
-                if (topbarBtn) {
+                } else {
                     topbarBtn.classList.remove('bg-brand-accent/30', 'border-brand-accent');
                 }
-                if (window.innerWidth < 768) {
+            }
+
+            if (window.innerWidth < 768) {
+                if (isBrowserPanelOpen) {
+                    switchTab('browser');
+                } else {
                     switchTab('code');
                 }
+            } else {
+                updateCenterPanelsLayout();
+            }
+            if (isBrowserPanelOpen) {
+                refreshLiveBrowser();
             }
             lucide.createIcons();
         }
@@ -1083,21 +1121,19 @@
             };
 
             if (window.innerWidth < 768) {
-                // Hide/Show Panels on mobile
+                // Mobile view: ONLY the selected active tab is displayed (100% full screen)
                 Object.keys(panels).forEach(key => {
                     const panel = panels[key];
                     if (!panel) return;
                     if (key === tab) {
-                        panel.style.transform = 'translateX(0)';
                         panel.classList.remove('hidden');
+                        panel.style.display = 'flex';
+                        panel.style.transform = 'none';
+                        panel.classList.add('w-full', 'h-full', 'z-30');
                     } else {
-                        if (key === 'files') {
-                            panel.style.transform = 'translateX(-100%)';
-                        } else if (key === 'chat' || key === 'terminal') {
-                            panel.style.transform = 'translateX(100%)';
-                        } else {
-                            panel.classList.add('hidden');
-                        }
+                        panel.classList.add('hidden');
+                        panel.style.display = 'none';
+                        panel.classList.remove('w-full', 'h-full', 'z-30');
                     }
                 });
 
@@ -1113,6 +1149,12 @@
                         btn.classList.add('text-slate-400');
                     }
                 });
+            } else {
+                Object.keys(panels).forEach(key => {
+                    const panel = panels[key];
+                    if (panel) panel.style.display = '';
+                });
+                updateCenterPanelsLayout();
             }
 
             // Refresh editor/browser to render correctly
@@ -1485,6 +1527,7 @@
                     editorInstance.refresh();
                 }
                 
+                updateCenterPanelsLayout();
                 // Switch to Code Tab on mobile
                 switchTab('code');
             } catch (err) {
@@ -1571,6 +1614,7 @@
                 document.getElementById('markdown-preview-container').classList.add('hidden');
                 const cmElement = document.querySelector('.CodeMirror');
                 if (cmElement) cmElement.style.display = 'none';
+                updateCenterPanelsLayout();
             } else {
                 // Switch to another tab if we closed the active one
                 if (activeFilePath === path) {
@@ -1578,6 +1622,7 @@
                     openFile(newActive);
                 } else {
                     renderTabs();
+                    updateCenterPanelsLayout();
                 }
             }
         }
