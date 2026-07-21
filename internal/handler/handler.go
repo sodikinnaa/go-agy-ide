@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1234,8 +1235,15 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 		targetURL = "http://" + targetURL
 	}
 
-	// Create request with exact HTTP method (GET, POST, PUT, DELETE, etc.) and body
-	req, err := http.NewRequest(r.Method, targetURL, r.Body)
+	// Read request body into memory so it can be re-sent safely
+	var reqBody []byte
+	if r.Body != nil {
+		reqBody, _ = io.ReadAll(r.Body)
+		r.Body.Close()
+	}
+
+	// Create request with exact HTTP method (GET, POST, PUT, DELETE, etc.) and buffered body
+	req, err := http.NewRequest(r.Method, targetURL, bytes.NewReader(reqBody))
 	if err != nil {
 		http.Error(w, "Invalid target URL: "+err.Error(), http.StatusBadRequest)
 		return
@@ -1244,7 +1252,7 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 	// Copy incoming request headers (Cookies, CSRF tokens, Content-Type, Authorization, etc.)
 	for k, vv := range r.Header {
 		lowerKey := strings.ToLower(k)
-		if lowerKey == "host" {
+		if lowerKey == "host" || lowerKey == "accept-encoding" {
 			continue
 		}
 		for _, v := range vv {
