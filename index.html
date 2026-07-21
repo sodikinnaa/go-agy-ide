@@ -55,6 +55,14 @@
             });
         });
     </script>
+    <!-- High Performance CDN Preconnect & DNS Prefetch -->
+    <link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+    <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
+    <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
+    <link rel="dns-prefetch" href="https://unpkg.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -80,8 +88,6 @@
         }
     </script>
     <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- CodeMirror CSS & Theme -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
@@ -820,9 +826,11 @@
             // Initialize Interactive Terminal (xterm.js)
             initInteractiveTerminal();
 
-            // Initialize Active Ports Polling
+            // Initialize Active Ports Polling (every 15s when tab is active)
             refreshPorts();
-            setInterval(refreshPorts, 5000);
+            setInterval(() => {
+                if (!document.hidden) refreshPorts();
+            }, 15000);
 
             // Restore active conversation session if saved
             const savedAgentId = localStorage.getItem('activeConversationId');
@@ -830,10 +838,10 @@
                 selectConversation(savedAgentId);
             }
             
-            // Auto refresh workspace files list silently every 2 seconds to keep it real-time!
+            // Auto refresh workspace files list silently (every 10s when tab is active)
             setInterval(() => {
-                refreshWorkspace(true);
-            }, 2000);
+                if (!document.hidden) refreshWorkspace(true);
+            }, 10000);
             
             // Setup listeners for responsive and reliable chat submission
             const chatInput = document.getElementById('chat-input');
