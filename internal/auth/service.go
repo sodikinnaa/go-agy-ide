@@ -49,8 +49,15 @@ func (s *Service) LoadPassword() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.secretPassword = os.Getenv("PASSWORD")
-	if s.secretPassword != "" {
+	envPwd := os.Getenv("PASSWORD")
+	if envPwd == "none" || envPwd == "disabled" || os.Getenv("DISABLE_PASSWORD") == "true" || os.Getenv("DISABLE_PASSWORD") == "1" {
+		s.secretPassword = ""
+		log.Printf("[SECURITY] Sandi keamanan dinonaktifake (Password Lock Disabled).\n")
+		return
+	}
+
+	if envPwd != "" {
+		s.secretPassword = envPwd
 		log.Printf("[SECURITY] Sandi keamanan dimuat saka env variable PASSWORD\n")
 		return
 	}
@@ -58,8 +65,14 @@ func (s *Service) LoadPassword() {
 	configPath := filepath.Join(s.serverStartDir, "password.txt")
 	data, err := os.ReadFile(configPath)
 	if err == nil {
-		s.secretPassword = strings.TrimSpace(string(data))
-		if s.secretPassword != "" {
+		val := strings.TrimSpace(string(data))
+		if val == "none" || val == "disabled" {
+			s.secretPassword = ""
+			log.Printf("[SECURITY] Sandi keamanan dinonaktifake (password.txt 'none').\n")
+			return
+		}
+		if val != "" {
+			s.secretPassword = val
 			log.Printf("[SECURITY] Sandi keamanan dimuat saka %s\n", configPath)
 			return
 		}
@@ -164,36 +177,27 @@ func (s *Service) CheckOAuthTokenExists() bool {
 	bypass := s.bypassDynamicAuthCheck
 	s.mu.RUnlock()
 
-	homeDir, err := getHomeDir()
-	if err != nil {
-		return false
-	}
-	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-	if _, err := os.Stat(tokenPath); err == nil {
+	if bypass {
 		return true
 	}
 
-	if bypass {
-		return false
+	homeDir, err := getHomeDir()
+	if err == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if fi, err := os.Stat(tokenPath); err == nil && fi.Size() > 0 {
+			return true
+		}
 	}
 
 	// 1. Check active keyring slot
 	val, err := keyring.Get("gemini", "antigravity")
 	if err == nil && val != "" {
-		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
-		log.Printf("[AUTH] Active credentials found in keyring. Restored dummy token file.")
 		return true
 	}
 
 	// 2. Check pool fallback
 	pool, err := s.LoadAccountsPool()
 	if err == nil && len(pool) > 0 {
-		// If we have accounts in the pool, restore the first one to the active slot
-		_ = keyring.Set("gemini", "antigravity", pool[0].KeyringValue)
-		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
-		log.Printf("[AUTH] Keyring was empty but pool has credentials. Restored first account from pool.")
 		return true
 	}
 
@@ -1041,4 +1045,20 @@ func (s *Service) SaveNewPassword(newPwd string) error {
 	os.Setenv("PASSWORD", newPwd)
 
 	return nil
+}
+
+func MaskEmail(email string) string {
+	email = strings.TrimSpace(email)
+	if email == "" {
+		return ""
+	}
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return email
+	}
+	name, domain := parts[0], parts[1]
+	if len(name) <= 2 {
+		return name[:1] + "***@" + domain
+	}
+	return name[:2] + "***" + name[len(name)-1:] + "@" + domain
 }

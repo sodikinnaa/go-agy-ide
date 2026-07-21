@@ -95,11 +95,27 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
 
     <style>
+        /* Essential Fallback Utility CSS */
+        html, body { height: 100%; margin: 0; padding: 0; background-color: #090a15; color: #f1f5f9; overscroll-behavior-y: contain; }
+        .hidden { display: none !important; }
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-center { justify-content: center; }
+        .justify-between { justify-content: space-between; }
+        .h-full { height: 100%; }
+        .w-full { width: 100%; }
+        .relative { position: relative; }
+        .absolute { position: absolute; }
+        .bg-brand-dark { background-color: #090a15; }
+        .bg-brand-panel { background-color: #111326; }
+        .border-brand-border { border-color: #1f2347; }
+        .text-brand-accent { color: #a855f7; }
+        .bg-brand-600 { background-color: #7c3aed; }
         body {
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #090a15;
             color: #f1f5f9;
-            overscroll-behavior-y: contain; /* Prevent pull-to-refresh */
         }
         .code-font {
             font-family: 'Fira Code', monospace;
@@ -272,7 +288,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.5.1</span>
+                    <span class="text-[10px] text-slate-400">v1.5.2</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -286,6 +302,9 @@
             </button>
             <button onclick="openQuotaModal()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Quota & Account Info">
                 <i data-lucide="user" class="w-4 h-4"></i>
+            </button>
+            <button onclick="openSearchWorkspaceModal()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200 flex items-center justify-center space-x-1" title="Cari Workspace (Ctrl+P / Cmd+P)">
+                <i data-lucide="search" class="w-4 h-4 text-brand-accent"></i>
             </button>
             <button onclick="refreshWorkspace()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Refresh">
                 <i data-lucide="refresh-cw" class="w-4 h-4"></i>
@@ -308,11 +327,24 @@
                     <i data-lucide="chevron-down" class="w-3 h-3 text-slate-400"></i>
                 </div>
                 <div class="flex items-center space-x-1">
+                    <button onclick="openSearchWorkspaceModal()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Cari Workspace (Ctrl+P)">
+                        <i data-lucide="search" class="w-4 h-4"></i>
+                    </button>
                     <button onclick="promptCreateFile()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="New File">
                         <i data-lucide="file-plus" class="w-4 h-4"></i>
                     </button>
                     <button onclick="promptCreateFolder()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="New Folder">
                         <i data-lucide="folder-plus" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- File Search Input -->
+            <div class="px-2 py-1.5 border-b border-brand-border/60">
+                <div class="relative flex items-center">
+                    <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 text-slate-500 pointer-events-none"></i>
+                    <input type="text" id="file-search-input" oninput="filterFileTree(this.value)" placeholder="Filter file..." class="w-full bg-brand-dark/70 border border-brand-border/80 rounded-lg pl-8 pr-7 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono transition duration-200" />
+                    <button id="clear-file-search-btn" onclick="clearFileSearch()" class="hidden absolute right-2 text-slate-500 hover:text-slate-300">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
                     </button>
                 </div>
             </div>
@@ -895,6 +927,7 @@
                 if (!res.ok) throw new Error('Gagal ngambil daftar file');
                 let files = await res.json();
                 if (!files) files = [];
+                currentWorkspaceFiles = files;
                 
                 const filesJSON = JSON.stringify(files);
                 if (silent && filesJSON === lastWorkspaceFilesJSON) {
@@ -1373,6 +1406,75 @@
             }
         }
 
+        function extractRealtimeStatus(fullText) {
+            if (!fullText || fullText.trim() === '') {
+                return { action: '🔌 Nyambungake menyang Antigravity Engine...', icon: 'loader-2', color: 'text-brand-accent', isAuthError: false };
+            }
+
+            const cleanText = fullText.replace(/<!-- keep-alive -->/g, '');
+            if (cleanText.includes('Authentication required') || cleanText.includes('authentication timed out')) {
+                return { action: '⚠️ Otentikasi Google Dibutuhake!', icon: 'alert-triangle', color: 'text-red-400', isAuthError: true };
+            }
+
+            const lines = cleanText.split('\n');
+            
+            let lastToolLine = '';
+            let hasThought = false;
+            let hasOutput = false;
+
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i].trim();
+                if (line.startsWith('●')) {
+                    lastToolLine = line.replace('●', '').replace(/\(ctrl\+o to expand\)/g, '').trim();
+                    break;
+                }
+                if (line.startsWith('▸') || line.includes('▸ Thought')) {
+                    hasThought = true;
+                }
+                if (line.length > 0 && !line.startsWith('▸') && !line.startsWith('●') && !line.startsWith('</pre>') && !line.startsWith('<details>') && !line.startsWith('```')) {
+                    hasOutput = true;
+                }
+            }
+
+            if (lastToolLine) {
+                let toolType = "🛠️ Eksekusi Tool";
+                let icon = "play";
+                let color = "text-brand-accent";
+
+                if (lastToolLine.includes('Read') || lastToolLine.includes('view_file')) {
+                    toolType = "📖 Moco Berkas";
+                    icon = "file-text";
+                    color = "text-blue-400";
+                } else if (lastToolLine.includes('Edit') || lastToolLine.includes('Write') || lastToolLine.includes('replace_file_content') || lastToolLine.includes('write_to_file')) {
+                    toolType = "✏️ Edit Berkas";
+                    icon = "edit-3";
+                    color = "text-yellow-400";
+                } else if (lastToolLine.includes('Search') || lastToolLine.includes('Grep') || lastToolLine.includes('ListDir') || lastToolLine.includes('list_dir') || lastToolLine.includes('grep_search')) {
+                    toolType = "🔍 Nggoleki Berkas";
+                    icon = "search";
+                    color = "text-purple-400";
+                } else if (lastToolLine.includes('Bash') || lastToolLine.includes('run_command')) {
+                    toolType = "💻 Perintah Terminal";
+                    icon = "terminal";
+                    color = "text-green-400";
+                }
+
+                let detail = lastToolLine;
+                if (detail.length > 55) detail = detail.substring(0, 52) + '...';
+                return { action: `${toolType}: ${detail}`, icon: icon, color: color, isAuthError: false };
+            }
+
+            if (hasThought) {
+                return { action: '🧠 Agen AI lagi mikir & ngrencanakake langkah...', icon: 'brain', color: 'text-amber-400', isAuthError: false };
+            }
+
+            if (hasOutput) {
+                return { action: '💬 Nulis balesan jawaban...', icon: 'message-square', color: 'text-emerald-400', isAuthError: false };
+            }
+
+            return { action: '⚡ Naliti konteks & berkas...', icon: 'loader-2', color: 'text-brand-accent', isAuthError: false };
+        }
+
         function formatToolSteps(text) {
             if (!text) return '';
             const lines = text.split('\n');
@@ -1631,63 +1733,133 @@
                     signal: activeChatAbortController.signal
                 });
 
+                if (response.status === 401) {
+                    if (thinkingInterval) {
+                        clearInterval(thinkingInterval);
+                        thinkingInterval = null;
+                    }
+                    const contentEl = botBubble.querySelector('.chat-message-content');
+                    if (contentEl) {
+                        contentEl.innerHTML = `
+                            <div class="p-4 bg-brand-dark/95 border border-brand-border rounded-xl text-xs text-slate-200 space-y-3 font-mono shadow-xl">
+                                <div class="flex items-center space-x-2 text-amber-400 font-bold text-sm">
+                                    <i data-lucide="shield-alert" class="w-5 h-5 shrink-0"></i>
+                                    <span>Otentikasi AI Dibutuhake</span>
+                                </div>
+                                <p class="text-xs text-slate-300 leading-relaxed">
+                                    Fitur obrolan mbutuhake <strong>Google Antigravity OAuth</strong> utawa <strong>OpenAI API Key</strong> sing terkonfigurasi.
+                                </p>
+                                <div class="flex flex-wrap gap-2 pt-1">
+                                    <a href="/login" class="px-3.5 py-2 bg-gradient-to-r from-brand-600 to-brand-accent hover:from-brand-700 hover:to-brand-600 text-white font-semibold rounded-lg text-xs transition flex items-center space-x-1.5 shadow">
+                                        <i data-lucide="log-in" class="w-4 h-4"></i>
+                                        <span>1. Login Google OAuth</span>
+                                    </a>
+                                    <button onclick="toggleOpenAISettings()" class="px-3.5 py-2 bg-brand-panel hover:bg-brand-border border border-brand-border text-slate-200 hover:text-white rounded-lg font-semibold text-xs transition flex items-center space-x-1.5">
+                                        <i data-lucide="key" class="w-4 h-4 text-amber-400"></i>
+                                        <span>2. Setel OpenAI API Key</span>
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                        lucide.createIcons();
+                    }
+                    return;
+                }
+
                 if (!response.ok) throw new Error('API server returned error');
 
-                // Tampilkan spinner 'lagi mikir' nalika ngenteni chunk pertama
                 const contentEl = botBubble.querySelector('.chat-message-content');
-                if (contentEl) {
-                    contentEl.innerHTML = '<span class="text-xs text-slate-400 flex items-center"><i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin mr-1.5 shrink-0 text-brand-accent"></i><span id="thinking-status">Agen lagi mikir... (0s)</span></span>';
-                }
-                lucide.createIcons();
+                let statusBanner = null;
+                let textContainer = null;
 
-                let thinkingSeconds = 0;
-                const statusPhrases = [
-                    "Agen lagi mikir...",
-                    "Nganalisis workspace...",
-                    "Ngrencanakake langkah...",
-                    "Maca struktur berkas...",
-                    "Nimbang solusi paling apik...",
-                    "Sabar ya lek, isih proses..."
-                ];
+                if (contentEl) {
+                    contentEl.innerHTML = '';
+                    statusBanner = document.createElement('div');
+                    statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1.5 mb-2.5 bg-brand-dark/80 border border-brand-border/80 rounded-xl text-xs font-mono select-none transition-all duration-200 shadow-sm';
+                    statusBanner.innerHTML = `
+                        <div class="flex items-center space-x-2 min-w-0">
+                            <i class="live-status-icon w-3.5 h-3.5 animate-spin text-brand-accent shrink-0" data-lucide="loader-2"></i>
+                            <span class="live-status-text text-slate-300 truncate font-medium text-[11px]">🔌 Nyambungake menyang Antigravity Engine...</span>
+                        </div>
+                        <span class="live-status-timer text-[10px] text-amber-400 font-bold shrink-0 ml-2 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono">0.0s</span>
+                    `;
+                    textContainer = document.createElement('div');
+                    textContainer.className = 'chat-text-response space-y-2';
+                    contentEl.appendChild(statusBanner);
+                    contentEl.appendChild(textContainer);
+                    lucide.createIcons();
+                }
+
+                const startTime = Date.now();
+                let lastIcon = 'loader-2';
+
                 thinkingInterval = setInterval(() => {
-                    thinkingSeconds++;
-                    const phraseIndex = Math.floor(thinkingSeconds / 4) % statusPhrases.length;
-                    const phrase = statusPhrases[phraseIndex];
-                    const statusTextEl = document.getElementById('thinking-status');
-                    if (statusTextEl) {
-                        statusTextEl.innerText = `${phrase} (${thinkingSeconds}s)`;
+                    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                    if (statusBanner) {
+                        const timerEl = statusBanner.querySelector('.live-status-timer');
+                        if (timerEl) timerEl.innerText = `${elapsed}s`;
                     }
-                }, 1000);
+                }, 100);
+
+                let autoIdleTimeout = null;
+                const resetIdleTimer = () => {
+                    if (autoIdleTimeout) clearTimeout(autoIdleTimeout);
+                    autoIdleTimeout = setTimeout(() => {
+                        if (statusBanner && textContainer && textContainer.innerText.trim() !== '' && thinkingInterval) {
+                            clearInterval(thinkingInterval);
+                            thinkingInterval = null;
+                            const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                            statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] font-mono text-emerald-400/90 select-none transition-all';
+                            statusBanner.innerHTML = `
+                                <div class="flex items-center space-x-2">
+                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                                    <span class="font-medium">Proses rampung</span>
+                                </div>
+                                <span class="text-[10px] text-emerald-400/80 font-bold shrink-0 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
+                            `;
+                            lucide.createIcons();
+                        }
+                    }, 3000);
+                };
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
-                let firstChunk = true;
 
                 while (true) {
                     const { done, value } = await reader.read();
-                    if (done) break;
+                    if (done) {
+                        if (autoIdleTimeout) clearTimeout(autoIdleTimeout);
+                        break;
+                    }
 
                     const chunk = decoder.decode(value, { stream: true });
                     fullText += chunk;
                     
                     let displayText = fullText.replace(/<!-- keep-alive -->/g, '');
+                    if (displayText.trim() !== "") {
+                        resetIdleTimer();
+                    }
                     
-                    if (firstChunk && displayText.trim() !== "") {
-                        if (thinkingInterval) {
-                            clearInterval(thinkingInterval);
-                            thinkingInterval = null;
+                    // Update realtime action status banner
+                    const statusInfo = extractRealtimeStatus(displayText);
+                    if (statusBanner) {
+                        const statusTextEl = statusBanner.querySelector('.live-status-text');
+                        const statusIconEl = statusBanner.querySelector('.live-status-icon');
+                        if (statusTextEl && statusTextEl.innerText !== statusInfo.action) {
+                            statusTextEl.innerText = statusInfo.action;
                         }
-                        const cEl = botBubble.querySelector('.chat-message-content');
-                        if (cEl) cEl.innerHTML = "";
-                        firstChunk = false;
+                        if (statusIconEl && statusInfo.icon !== lastIcon) {
+                            statusIconEl.setAttribute('data-lucide', statusInfo.icon);
+                            statusIconEl.className = `live-status-icon w-3.5 h-3.5 ${statusInfo.icon === 'loader-2' ? 'animate-spin' : ''} ${statusInfo.color} shrink-0`;
+                            lastIcon = statusInfo.icon;
+                            lucide.createIcons();
+                        }
                     }
 
-                    if (!firstChunk) {
+                    if (displayText.trim() !== "") {
                         let parsedText = formatToolSteps(displayText);
-                        // Render markdown dynamically
-                        const cEl = botBubble.querySelector('.chat-message-content');
-                        if (cEl) cEl.innerHTML = marked.parse(parsedText);
+                        if (textContainer) textContainer.innerHTML = marked.parse(parsedText);
                     }
 
                     // Add copy/apply buttons to dynamic pre/code blocks
@@ -1722,8 +1894,62 @@
                     document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
                 }
 
+                if (thinkingInterval) {
+                    clearInterval(thinkingInterval);
+                    thinkingInterval = null;
+                }
+
+                const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                const isAuthError = fullText.includes('Authentication required') || fullText.includes('authentication timed out');
+                const isResponseEmpty = !textContainer || textContainer.innerText.trim() === '';
+
+                if (isAuthError || isResponseEmpty) {
+                    if (statusBanner) {
+                        statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-red-950/40 border border-red-500/30 rounded-xl text-[11px] font-mono text-red-300 select-none transition-all';
+                        statusBanner.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-red-400 shrink-0"></i>
+                                <span class="font-medium">Otentikasi Dibutuhake / Timeout</span>
+                            </div>
+                            <span class="text-[10px] text-red-400/80 font-bold shrink-0 ml-2 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
+                        `;
+                    }
+                    if (textContainer && isResponseEmpty) {
+                        textContainer.innerHTML = `
+                            <div class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-2 font-mono">
+                                <div class="flex items-center space-x-2 font-bold text-amber-300">
+                                    <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                                    <span>Gagal Ngasilake Balesan AI</span>
+                                </div>
+                                <p class="text-[11px] text-slate-300 leading-relaxed">
+                                    Sesi otentikasi Google Antigravity durung aktif utawa wis kedaluwarsa, saengga CLI agy ora bisa menehi wangsulan.
+                                </p>
+                                <div class="flex items-center space-x-2 pt-1">
+                                    <a href="/login" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-semibold text-[11px] transition flex items-center space-x-1">
+                                        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                                        <span>Mlebu Kanthi Google OAuth</span>
+                                    </a>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    lucide.createIcons();
+                } else {
+                    if (statusBanner) {
+                        statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] font-mono text-emerald-400/90 select-none transition-all';
+                        statusBanner.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                                <span class="font-medium">Proses rampung</span>
+                            </div>
+                            <span class="text-[10px] text-emerald-400/80 font-bold shrink-0 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
+                        `;
+                        lucide.createIcons();
+                    }
+                }
+
                 // Log response completion
-                logToTerminal(`[SYSTEM] Antigravity Agent finished reasoning.`);
+                logToTerminal(`[SYSTEM] Antigravity Agent finished reasoning in ${totalTime}s.`);
                 refreshWorkspace(); // Refresh workspace automatically as files might have been edited!
 
                 // Trigger PWA notification if tab is in the background
@@ -2237,6 +2463,9 @@
                 const res = await fetch('/api/workspaces');
                 if (!res.ok) throw new Error('Gagal ngambil data workspace');
                 const data = await res.json();
+                allWorkspacesDataCache = data;
+                const filterInput = document.getElementById('workspace-search-filter');
+                if (filterInput) filterInput.value = '';
 
                 listContainer.innerHTML = '';
                 
@@ -2737,6 +2966,18 @@
             }, 1500);
         });
 
+        function maskEmail(email) {
+            if (!email || typeof email !== 'string') return '';
+            email = email.trim();
+            const parts = email.split('@');
+            if (parts.length !== 2) return email;
+            const [name, domain] = parts;
+            if (name.length <= 2) {
+                return name[0] + '***@' + domain;
+            }
+            return name.slice(0, 2) + '***' + name.slice(-1) + '@' + domain;
+        }
+
         // --- Quota & Account Modal Utilities ---
         async function openQuotaModal() {
             document.getElementById('quota-modal').classList.remove('hidden');
@@ -2760,7 +3001,7 @@
                 
                 if (statusRes.ok) {
                     const statusData = await statusRes.json();
-                    if (emailSpan) emailSpan.innerText = statusData.email || 'Ora Mlebu (Belum Login)';
+                    if (emailSpan) emailSpan.innerText = maskEmail(statusData.email) || 'Ora Mlebu (Belum Login)';
                     if (projectSpan) projectSpan.innerText = statusData.project || 'Ora Ono (Belum Ada Project)';
                 }
                 
@@ -2833,11 +3074,12 @@
                         let html = '';
                         accounts.forEach(acc => {
                             const isActive = acc === active;
+                            const maskedAcc = maskEmail(acc);
                             html += `
                                 <div class="flex items-center justify-between p-2 rounded-lg ${isActive ? 'bg-brand-600/20 border border-brand-accent/30' : 'bg-brand-dark/20 border border-brand-border/40'} text-[11px]">
                                     <div class="flex items-center space-x-1.5 truncate max-w-[200px]">
                                         <div class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-500'}"></div>
-                                        <span class="font-mono text-slate-200 truncate ${isActive ? 'font-bold' : ''}" title="${escapeHtml(acc)}">${escapeHtml(acc)}</span>
+                                        <span class="font-mono text-slate-200 truncate ${isActive ? 'font-bold' : ''}" title="${escapeHtml(maskedAcc)}">${escapeHtml(maskedAcc)}</span>
                                     </div>
                                     <div class="flex items-center space-x-1">
                                         ${!isActive ? `
@@ -2885,7 +3127,7 @@
         }
 
         async function deleteAccount(email) {
-            if (confirm(`Njenengan yakin pengen mbusak akun ${email} saka pool?`)) {
+            if (confirm(`Njenengan yakin pengen mbusak akun ${maskEmail(email)} saka pool?`)) {
                 try {
                     const res = await fetch('/api/auth/pool/delete', {
                         method: 'POST',
@@ -3067,7 +3309,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.5.1";
+                const current = "v1.5.2";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -3146,7 +3388,452 @@
             }
         }
 
+        // Global Workspace Search & Filtering
+        let currentWorkspaceFiles = [];
+        let searchDebounceTimer = null;
+        let currentSearchTab = 'all';
+        let searchResultsCache = [];
+        let searchSelectedIndex = -1;
+        let allWorkspacesDataCache = null;
+
+        function openSearchWorkspaceModal() {
+            const modal = document.getElementById('search-workspace-modal');
+            modal.classList.remove('hidden');
+            const input = document.getElementById('search-workspace-input');
+            input.value = '';
+            input.focus();
+            searchSelectedIndex = -1;
+            searchResultsCache = [];
+            setSearchTab('all', false);
+            renderDefaultSearchResults();
+            lucide.createIcons();
+        }
+
+        function closeSearchWorkspaceModal() {
+            const modal = document.getElementById('search-workspace-modal');
+            modal.classList.add('hidden');
+        }
+
+        function setSearchTab(tab, reRender = true) {
+            currentSearchTab = tab;
+            ['all', 'files', 'content'].forEach(t => {
+                const btn = document.getElementById(`search-tab-${t}`);
+                if (btn) {
+                    if (t === tab) {
+                        btn.className = 'px-2.5 py-1 rounded-md bg-brand-600 text-white font-medium transition';
+                    } else {
+                        btn.className = 'px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition';
+                    }
+                }
+            });
+            if (reRender) {
+                renderSearchResults();
+            }
+        }
+
+        function renderDefaultSearchResults() {
+            const container = document.getElementById('search-workspace-results');
+            const countEl = document.getElementById('search-results-count');
+            
+            if (!currentWorkspaceFiles || currentWorkspaceFiles.length === 0) {
+                container.innerHTML = '<div class="text-center text-xs text-slate-500 py-10">Ketik kata kunci kanggo miwiti nggoleki workspace...</div>';
+                countEl.innerText = '0 ditemokake';
+                return;
+            }
+
+            const topFiles = currentWorkspaceFiles.filter(f => !f.isDir).slice(0, 15);
+            searchResultsCache = topFiles.map(f => ({
+                path: f.path,
+                name: f.name,
+                matches: []
+            }));
+
+            countEl.innerText = `${searchResultsCache.length} file utama`;
+            renderSearchResults();
+        }
+
+        function onSearchWorkspaceInput(query) {
+            clearTimeout(searchDebounceTimer);
+            const q = query.trim();
+            if (!q) {
+                renderDefaultSearchResults();
+                return;
+            }
+
+            const container = document.getElementById('search-workspace-results');
+            container.innerHTML = '<div class="text-center text-xs text-slate-400 py-8"><i data-lucide="loader-2" class="w-5 h-5 animate-spin mx-auto mb-2 text-brand-accent"></i>Nggoleki ing workspace...</div>';
+            lucide.createIcons();
+
+            searchDebounceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch(`/api/workspace/search?q=${encodeURIComponent(q)}`);
+                    if (!res.ok) throw new Error('Gagal nggoleki workspace');
+                    searchResultsCache = await res.json();
+                    renderSearchResults(q);
+                } catch (err) {
+                    container.innerHTML = `<div class="text-center text-xs text-red-400 py-8">${err.message}</div>`;
+                    document.getElementById('search-results-count').innerText = 'Error';
+                }
+            }, 180);
+        }
+
+        function renderSearchResults(query = '') {
+            const container = document.getElementById('search-workspace-results');
+            const countEl = document.getElementById('search-results-count');
+            container.innerHTML = '';
+            searchSelectedIndex = -1;
+
+            if (!searchResultsCache || searchResultsCache.length === 0) {
+                container.innerHTML = '<div class="text-center text-xs text-slate-500 py-10">Ora ana asil sing cocog karo panggolekan.</div>';
+                countEl.innerText = '0 ditemokake';
+                return;
+            }
+
+            let filteredResults = searchResultsCache;
+            if (currentSearchTab === 'files') {
+                filteredResults = searchResultsCache.filter(item => {
+                    const qLower = query.toLowerCase();
+                    return item.name.toLowerCase().includes(qLower) || item.path.toLowerCase().includes(qLower);
+                });
+            } else if (currentSearchTab === 'content') {
+                filteredResults = searchResultsCache.filter(item => item.matches && item.matches.length > 0);
+            }
+
+            countEl.innerText = `${filteredResults.length} hasil`;
+
+            if (filteredResults.length === 0) {
+                container.innerHTML = '<div class="text-center text-xs text-slate-500 py-10">Ora ana asil ing kategori iki.</div>';
+                return;
+            }
+
+            let flatIndex = 0;
+            filteredResults.forEach((item) => {
+                const card = document.createElement('div');
+                card.className = 'bg-brand-dark/40 border border-brand-border/60 hover:border-brand-500/80 rounded-xl p-2.5 transition duration-150 group cursor-pointer space-y-1.5';
+                card.setAttribute('data-search-index', flatIndex);
+                
+                const fileHeader = document.createElement('div');
+                fileHeader.className = 'flex items-center justify-between';
+                
+                const fileTitleArea = document.createElement('div');
+                fileTitleArea.className = 'flex items-center space-x-2 min-w-0';
+                
+                const icon = document.createElement('i');
+                icon.className = 'w-4 h-4 text-brand-accent shrink-0';
+                icon.setAttribute('data-lucide', getFileIcon(item.name));
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'text-xs font-bold text-slate-200 font-mono group-hover:text-white truncate';
+                nameSpan.innerHTML = highlightMatch(item.name, query);
+                
+                const pathSpan = document.createElement('span');
+                pathSpan.className = 'text-[11px] text-slate-500 font-mono truncate hidden sm:inline';
+                pathSpan.innerHTML = `(${highlightMatch(item.path, query)})`;
+                
+                fileTitleArea.appendChild(icon);
+                fileTitleArea.appendChild(nameSpan);
+                fileTitleArea.appendChild(pathSpan);
+                
+                const actionBtn = document.createElement('span');
+                actionBtn.className = 'text-[10px] text-slate-400 group-hover:text-brand-accent font-mono shrink-0 ml-2';
+                actionBtn.innerText = 'Bukak File ↵';
+                
+                fileHeader.appendChild(fileTitleArea);
+                fileHeader.appendChild(actionBtn);
+                card.appendChild(fileHeader);
+                
+                card.onclick = () => {
+                    openFileAtLine(item.path, 1);
+                    closeSearchWorkspaceModal();
+                };
+
+                if (item.matches && item.matches.length > 0 && (currentSearchTab === 'all' || currentSearchTab === 'content')) {
+                    const snippetsContainer = document.createElement('div');
+                    snippetsContainer.className = 'space-y-1 pt-1 border-t border-brand-border/30';
+                    
+                    item.matches.slice(0, 4).forEach(m => {
+                        const snippetRow = document.createElement('div');
+                        snippetRow.className = 'flex items-baseline space-x-2 text-[11px] font-mono px-2 py-1 rounded bg-brand-panel/80 hover:bg-brand-border/50 transition';
+                        
+                        const lineNum = document.createElement('span');
+                        lineNum.className = 'text-amber-400/90 font-bold shrink-0 text-[10px] select-none';
+                        lineNum.innerText = `L${m.lineNumber}:`;
+                        
+                        const lineSnippet = document.createElement('span');
+                        lineSnippet.className = 'text-slate-300 truncate';
+                        lineSnippet.innerHTML = highlightMatch(escapeHTML(m.lineText), query);
+                        
+                        snippetRow.appendChild(lineNum);
+                        snippetRow.appendChild(lineSnippet);
+                        
+                        snippetRow.onclick = (e) => {
+                            e.stopPropagation();
+                            openFileAtLine(item.path, m.lineNumber);
+                            closeSearchWorkspaceModal();
+                        };
+
+                        snippetsContainer.appendChild(snippetRow);
+                    });
+
+                    if (item.matches.length > 4) {
+                        const moreInfo = document.createElement('div');
+                        moreInfo.className = 'text-[10px] text-slate-500 italic px-2';
+                        moreInfo.innerText = `+${item.matches.length - 4} match liyane ing file iki...`;
+                        snippetsContainer.appendChild(moreInfo);
+                    }
+
+                    card.appendChild(snippetsContainer);
+                }
+
+                container.appendChild(card);
+                flatIndex++;
+            });
+
+            lucide.createIcons();
+        }
+
+        function highlightMatch(text, query) {
+            if (!query) return text;
+            const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`(${escaped})`, 'gi');
+            return text.replace(regex, '<mark class="bg-amber-500/30 text-amber-200 px-0.5 rounded">$1</mark>');
+        }
+
+        function escapeHTML(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            switch (ext) {
+                case 'go': return 'file-code';
+                case 'js': case 'ts': case 'jsx': case 'tsx': return 'file-json';
+                case 'html': case 'htm': return 'code';
+                case 'css': case 'scss': return 'palette';
+                case 'json': case 'yaml': case 'yml': return 'file-text';
+                case 'md': return 'file-text';
+                case 'py': return 'terminal';
+                case 'sh': return 'terminal';
+                default: return 'file';
+            }
+        }
+
+        function openFileAtLine(path, lineNumber) {
+            openFile(path).then(() => {
+                if (lineNumber && typeof editorInstance !== 'undefined' && editorInstance) {
+                    setTimeout(() => {
+                        const lineIdx = lineNumber - 1;
+                        const lineContent = editorInstance.getLine(lineIdx) || '';
+                        editorInstance.setCursor({ line: lineIdx, ch: 0 });
+                        editorInstance.scrollIntoView({ line: lineIdx, ch: 0 }, 150);
+                        editorInstance.setSelection({ line: lineIdx, ch: 0 }, { line: lineIdx, ch: lineContent.length });
+                        editorInstance.focus();
+                    }, 150);
+                }
+            });
+        }
+
+        function handleSearchWorkspaceKeydown(e) {
+            const container = document.getElementById('search-workspace-results');
+            const cards = container.querySelectorAll('[data-search-index]');
+            if (cards.length === 0) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                searchSelectedIndex = Math.min(searchSelectedIndex + 1, cards.length - 1);
+                updateSearchSelection(cards);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                searchSelectedIndex = Math.max(searchSelectedIndex - 1, 0);
+                updateSearchSelection(cards);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (searchSelectedIndex >= 0 && searchSelectedIndex < cards.length) {
+                    cards[searchSelectedIndex].click();
+                } else if (cards.length > 0) {
+                    cards[0].click();
+                }
+            } else if (e.key === 'Escape') {
+                closeSearchWorkspaceModal();
+            }
+        }
+
+        function updateSearchSelection(cards) {
+            cards.forEach((card, idx) => {
+                if (idx === searchSelectedIndex) {
+                    card.classList.add('ring-2', 'ring-brand-500', 'bg-brand-600/20');
+                    card.scrollIntoView({ block: 'nearest' });
+                } else {
+                    card.classList.remove('ring-2', 'ring-brand-500', 'bg-brand-600/20');
+                }
+            });
+        }
+
+        function filterFileTree(query) {
+            const q = query.trim().toLowerCase();
+            const clearBtn = document.getElementById('clear-file-search-btn');
+            const treeContainer = document.getElementById('file-tree');
+            
+            if (q) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+
+            if (!currentWorkspaceFiles || currentWorkspaceFiles.length === 0) return;
+
+            if (!q) {
+                treeContainer.innerHTML = '';
+                const tree = buildTree(currentWorkspaceFiles);
+                renderTree(tree, 0, treeContainer);
+                lucide.createIcons();
+                return;
+            }
+
+            const matchedFiles = currentWorkspaceFiles.filter(f => 
+                f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
+            );
+
+            if (matchedFiles.length === 0) {
+                treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Ora ana file sing cocok</div>';
+                return;
+            }
+
+            treeContainer.innerHTML = '';
+            matchedFiles.forEach(file => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center space-x-2 px-2 py-1.5 rounded-lg hover:bg-brand-panel text-slate-300 text-xs cursor-pointer font-mono truncate transition';
+                
+                const icon = document.createElement('i');
+                icon.className = 'w-4 h-4 text-brand-accent shrink-0';
+                icon.setAttribute('data-lucide', file.isDir ? 'folder' : getFileIcon(file.name));
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'truncate';
+                nameSpan.innerHTML = highlightMatch(file.path, q);
+                
+                item.appendChild(icon);
+                item.appendChild(nameSpan);
+
+                if (!file.isDir) {
+                    item.onclick = () => openFile(file.path);
+                }
+
+                treeContainer.appendChild(item);
+            });
+
+            lucide.createIcons();
+        }
+
+        function clearFileSearch() {
+            const input = document.getElementById('file-search-input');
+            input.value = '';
+            filterFileTree('');
+        }
+
+        function filterWorkspaceList(query) {
+            const listContainer = document.getElementById('workspace-list');
+            if (!allWorkspacesDataCache) return;
+            const q = query.trim().toLowerCase();
+            
+            const activePath = allWorkspacesDataCache.active;
+            const filteredList = allWorkspacesDataCache.list.filter(p => p.toLowerCase().includes(q));
+
+            listContainer.innerHTML = '';
+            if (filteredList.length === 0) {
+                listContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-4">Ora ana workspace sing cocok.</div>';
+                return;
+            }
+
+            filteredList.forEach(path => {
+                const isActive = path === activePath;
+                const folderName = path.split('/').pop() || path;
+
+                const row = document.createElement('div');
+                row.className = `flex items-center justify-between p-2 rounded-xl border transition text-xs ${isActive ? 'bg-brand-600/20 border-brand-500 text-white' : 'bg-brand-dark/40 border-brand-border hover:bg-brand-panel text-slate-300 cursor-pointer'}`;
+                
+                const clickArea = document.createElement('div');
+                clickArea.className = "flex items-center space-x-2 flex-1 min-w-0 py-1";
+                if (!isActive) {
+                    clickArea.onclick = () => selectWorkspace(path);
+                }
+
+                const icon = document.createElement('i');
+                icon.className = `w-4 h-4 shrink-0 ${isActive ? 'text-brand-accent' : 'text-slate-400'}`;
+                icon.setAttribute('data-lucide', isActive ? 'folder-check' : 'folder');
+                
+                const textContainer = document.createElement('div');
+                textContainer.className = "truncate flex flex-col";
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.className = "font-bold font-mono";
+                nameSpan.innerHTML = highlightMatch(folderName, q);
+                
+                const pathSpan = document.createElement('span');
+                pathSpan.className = "text-[10px] text-slate-500 font-mono truncate";
+                pathSpan.innerHTML = highlightMatch(path, q);
+
+                textContainer.appendChild(nameSpan);
+                textContainer.appendChild(pathSpan);
+                clickArea.appendChild(icon);
+                clickArea.appendChild(textContainer);
+                row.appendChild(clickArea);
+                
+                listContainer.appendChild(row);
+            });
+
+            lucide.createIcons();
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 'P' || e.key === 'f' || e.key === 'F')) {
+                e.preventDefault();
+                openSearchWorkspaceModal();
+            }
+        });
     </script>
+
+    <!-- Search Workspace Modal (Command Palette / Workspace Search) -->
+    <div id="search-workspace-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-start justify-center pt-10 md:pt-16 p-4">
+        <div class="w-full max-w-2xl bg-brand-panel border border-brand-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
+            <!-- Search Input Bar -->
+            <div class="p-4 border-b border-brand-border flex items-center space-x-3 bg-brand-dark/80">
+                <i data-lucide="search" class="w-5 h-5 text-brand-accent shrink-0"></i>
+                <input type="text" id="search-workspace-input" oninput="onSearchWorkspaceInput(this.value)" onkeydown="handleSearchWorkspaceKeydown(event)" placeholder="Cari nama file utawa isi teks ing workspace... (Ctrl+P)" class="w-full bg-transparent border-none text-sm text-white focus:outline-none placeholder-slate-500 font-mono" autoFocus />
+                <button onclick="closeSearchWorkspaceModal()" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Filter Tabs & Stats -->
+            <div class="px-4 py-2 bg-brand-dark/40 border-b border-brand-border flex items-center justify-between text-xs select-none">
+                <div class="flex items-center space-x-2">
+                    <button id="search-tab-all" onclick="setSearchTab('all')" class="px-2.5 py-1 rounded-md bg-brand-600 text-white font-medium transition">Semua</button>
+                    <button id="search-tab-files" onclick="setSearchTab('files')" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition">📄 Nama File</button>
+                    <button id="search-tab-content" onclick="setSearchTab('content')" class="px-2.5 py-1 rounded-md text-slate-400 hover:text-white transition">🔍 Isi Teks (Grep)</button>
+                </div>
+                <span id="search-results-count" class="text-slate-400 font-mono text-[11px]">0 ditemokake</span>
+            </div>
+
+            <!-- Results List -->
+            <div id="search-workspace-results" class="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-hide min-h-[200px]">
+                <div class="text-center text-xs text-slate-500 py-10">Ketik kata kunci kanggo miwiti nggoleki workspace...</div>
+            </div>
+
+            <!-- Helper Footer -->
+            <div class="px-4 py-2 bg-brand-dark/80 border-t border-brand-border flex items-center justify-between text-[11px] text-slate-400 select-none">
+                <div class="flex items-center space-x-3">
+                    <span class="flex items-center space-x-1"><kbd class="bg-brand-border px-1.5 py-0.5 rounded text-[10px] text-slate-300 font-mono">↑</kbd><kbd class="bg-brand-border px-1.5 py-0.5 rounded text-[10px] text-slate-300 font-mono">↓</kbd> <span>Navigasi</span></span>
+                    <span class="flex items-center space-x-1"><kbd class="bg-brand-border px-1.5 py-0.5 rounded text-[10px] text-slate-300 font-mono">↵</kbd> <span>Bukak File</span></span>
+                    <span class="flex items-center space-x-1"><kbd class="bg-brand-border px-1.5 py-0.5 rounded text-[10px] text-slate-300 font-mono">Esc</kbd> <span>Tutup</span></span>
+                </div>
+                <span class="text-brand-accent font-semibold flex items-center space-x-1">
+                    <i data-lucide="folder-git" class="w-3.5 h-3.5 inline"></i>
+                    <span>Workspace Search</span>
+                </span>
+            </div>
+        </div>
+    </div>
 
     <!-- Workspace Modal -->
     <div id="workspace-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -3159,6 +3846,12 @@
                 <span>Atur Workspace</span>
             </h2>
             
+            <!-- Workspace List Filter Input -->
+            <div class="mb-3 relative">
+                <input type="text" id="workspace-search-filter" oninput="filterWorkspaceList(this.value)" placeholder="Filter daftar workspace..." class="w-full bg-brand-dark border border-brand-border rounded-xl py-1.5 px-3 pl-8 text-xs text-white focus:outline-none focus:border-brand-500 font-mono" />
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500 pointer-events-none"></i>
+            </div>
+
             <!-- List of Workspaces -->
             <div id="workspace-list" class="space-y-2 max-h-60 overflow-y-auto mb-6 scrollbar-hide">
                 <!-- Loaded dynamically -->
@@ -3195,7 +3888,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.1</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.2</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

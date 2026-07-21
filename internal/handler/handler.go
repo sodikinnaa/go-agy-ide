@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.5.1"
+const AppVersion = "v1.5.2"
 
 var versionRegex = regexp.MustCompile(`v\d+\.\d+(?:\.[0-9a-zA-Z-]+)+`)
 
@@ -105,6 +105,10 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			isPublicGoogleAPI := r.URL.Path == "/api/auth/start" ||
 				r.URL.Path == "/api/auth/submit" ||
 				r.URL.Path == "/api/auth/status" ||
+				r.URL.Path == "/api/auth/pool" ||
+				r.URL.Path == "/api/auth/pool/switch" ||
+				r.URL.Path == "/api/auth/pool/delete" ||
+				r.URL.Path == "/api/auth/google/clear" ||
 				r.URL.Path == "/api/openai/settings" ||
 				r.URL.Path == "/api/openai/models" ||
 				r.URL.Path == "/api/auth/pwd/update" ||
@@ -113,7 +117,7 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			isGoogleLoginPage := r.URL.Path == "/login"
 			isOpenAIConfigPage := r.URL.Path == "/"
 
-			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists() || os.Getenv("OPENAI_API_KEY") != ""
+			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists() || os.Getenv("OPENAI_API_KEY") != "" || (auth.HomeDirOverride == "" && auth.FindAgyPath() != "")
 
 			if !isGoogleAuthPassed {
 				if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicGoogleAPI && r.URL.Path != "/api/auth/logout" {
@@ -244,7 +248,7 @@ func (h *Handler) HandleAuthStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"authenticated": h.authSvc.CheckOAuthTokenExists(),
-		"email":         h.authSvc.GetAuthenticatedEmail(),
+		"email":         auth.MaskEmail(h.authSvc.GetAuthenticatedEmail()),
 		"project":       h.authSvc.GetGCPProject(),
 		"version":       AppVersion,
 	})
@@ -400,6 +404,20 @@ func (h *Handler) HandleListFiles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(files)
 }
+
+// HandleSearchWorkspace searches active workspace for filename or text content matches
+func (h *Handler) HandleSearchWorkspace(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	results, err := h.workspaceSvc.SearchWorkspace(query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(results)
+}
+
 
 // HandleFileOperations handles GET (read), POST (write), and DELETE (remove) for files
 func (h *Handler) HandleFileOperations(w http.ResponseWriter, r *http.Request) {
@@ -560,6 +578,13 @@ func (h *Handler) HandleChatStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	if cmd != nil {
+		go func() {
+			_ = cmd.Wait()
+			_ = stdoutPipe.Close()
+		}()
+	}
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
@@ -608,10 +633,6 @@ Loop:
 		case <-r.Context().Done():
 			break Loop
 		}
-	}
-
-	if cmd != nil {
-		_ = cmd.Wait()
 	}
 }
 

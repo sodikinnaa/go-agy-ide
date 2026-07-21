@@ -351,7 +351,12 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 
 	args := []string{"--add-dir", activeWorkspaceDir}
 	if req.Model != "" {
-		args = append(args, "--model", req.Model)
+		modelArg := strings.TrimSpace(req.Model)
+		fields := strings.Fields(modelArg)
+		if len(fields) > 0 {
+			modelArg = fields[0]
+		}
+		args = append(args, "--model", modelArg)
 	}
 	args = append(args, "--print", req.Prompt, "--dangerously-skip-permissions")
 
