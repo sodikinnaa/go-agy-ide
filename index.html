@@ -176,6 +176,41 @@
         .shadow { box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3); }
         .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); }
         .shadow-xl { box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+
+        /* Ultra-Smooth Panel & Tab Easing */
+        .smooth-panel {
+            transition: flex 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform, opacity;
+        }
+
+        .tab-content-enter {
+            animation: tabEnter 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes tabEnter {
+            from {
+                opacity: 0.2;
+                transform: translateY(6px) scale(0.99);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* Top Browser Progress Loading Bar */
+        #browser-loading-bar {
+            height: 2.5px;
+            background: linear-gradient(90deg, #a855f7, #10b981, #3b82f6);
+            background-size: 200% 100%;
+            animation: shimmerLoading 1.2s infinite linear;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-out;
+        }
+
+        @keyframes shimmerLoading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #090a15;
@@ -553,6 +588,9 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Top Browser Progress Loading Bar -->
+            <div id="browser-loading-bar" class="w-0 opacity-0 transition-all duration-300 flex-none"></div>
 
             <!-- Iframe Container & Viewport -->
             <div class="flex-1 bg-slate-950 flex flex-col justify-center items-center overflow-hidden relative">
@@ -1112,7 +1150,26 @@
             return url;
         }
 
+        function triggerBrowserProgressAnimation() {
+            const bar = document.getElementById('browser-loading-bar');
+            if (!bar) return;
+            bar.style.width = '30%';
+            bar.style.opacity = '1';
+            setTimeout(() => { if (bar.style.opacity === '1') bar.style.width = '75%'; }, 150);
+        }
+
+        function finishBrowserProgressAnimation() {
+            const bar = document.getElementById('browser-loading-bar');
+            if (!bar) return;
+            bar.style.width = '100%';
+            setTimeout(() => {
+                bar.style.opacity = '0';
+                setTimeout(() => { bar.style.width = '0%'; }, 200);
+            }, 180);
+        }
+
         function syncBrowserUrlOnLoad(iframe) {
+            finishBrowserProgressAnimation();
             if (!iframe) return;
             try {
                 const currentHref = iframe.contentWindow.location.href;
@@ -1147,8 +1204,9 @@
             const iframe = document.getElementById('live-browser-iframe');
             const input = document.getElementById('browser-url-input');
             if (!iframe) return;
+            triggerBrowserProgressAnimation();
             const resolved = resolveTargetUrl(input ? input.value : '');
-            if (input && input.value !== resolved) input.value = resolved;
+            if (input && input.value !== resolved && !resolved.includes('/api/browser/proxy?url=')) input.value = resolved;
             iframe.src = resolved;
         }
 
@@ -1273,14 +1331,14 @@
                     const panel = panels[key];
                     if (!panel) return;
                     if (key === tab) {
-                        panel.classList.remove('hidden');
+                        panel.classList.remove('hidden', 'tab-content-enter');
+                        void panel.offsetWidth; // Trigger reflow for smooth animation
+                        panel.classList.add('w-full', 'h-full', 'z-30', 'tab-content-enter');
                         panel.style.display = 'flex';
-                        panel.style.transform = 'none';
-                        panel.classList.add('w-full', 'h-full', 'z-30');
                     } else {
                         panel.classList.add('hidden');
+                        panel.classList.remove('w-full', 'h-full', 'z-30', 'tab-content-enter');
                         panel.style.display = 'none';
-                        panel.classList.remove('w-full', 'h-full', 'z-30');
                     }
                 });
 
