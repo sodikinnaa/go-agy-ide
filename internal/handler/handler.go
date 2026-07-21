@@ -10,6 +10,7 @@ import (
 	"mobile-agy/internal/terminal"
 	"mobile-agy/internal/workspace"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1220,8 +1221,8 @@ func (h *Handler) HandlePorts(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(ports)
 }
 
-// HandleBrowserProxy proxies external websites for the embedded Live Browser engine,
-// bypassing restrictive X-Frame-Options and Content-Security-Policy frame-ancestors headers.
+// HandleBrowserProxy proxies external & local applications for the embedded Live Browser engine,
+// bypassing restrictive X-Frame-Options & CSP headers, while preserving CSRF tokens, cookies, and HTTP methods.
 func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 	targetURL := r.URL.Query().Get("url")
 	if targetURL == "" {
@@ -1233,17 +1234,40 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 		targetURL = "http://" + targetURL
 	}
 
-	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	// Create request with exact HTTP method (GET, POST, PUT, DELETE, etc.) and body
+	req, err := http.NewRequest(r.Method, targetURL, r.Body)
 	if err != nil {
 		http.Error(w, "Invalid target URL: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	req.Header.Set("User-Agent", r.UserAgent())
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+	// Copy incoming request headers (Cookies, CSRF tokens, Content-Type, Authorization, etc.)
+	for k, vv := range r.Header {
+		lowerKey := strings.ToLower(k)
+		if lowerKey == "host" {
+			continue
+		}
+		for _, v := range vv {
+			req.Header.Add(k, v)
+		}
+	}
+
+	// Set Origin & Referer headers to match target host to pass CSRF validation
+	parsedTarget, parseErr := url.Parse(targetURL)
+	if parseErr == nil && parsedTarget.Host != "" {
+		req.Header.Set("Host", parsedTarget.Host)
+		req.Header.Set("Origin", parsedTarget.Scheme+"://"+parsedTarget.Host)
+		req.Header.Set("Referer", targetURL)
+	}
 
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
 	}
 
 	resp, err := client.Do(req)
@@ -1253,7 +1277,7 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
-	// Strip frame-blocking security headers
+	// Strip frame-blocking security headers while forwarding Set-Cookie and response headers
 	for k, vv := range resp.Header {
 		lowerKey := strings.ToLower(k)
 		if lowerKey == "x-frame-options" || lowerKey == "content-security-policy" || lowerKey == "content-security-policy-report-only" {
