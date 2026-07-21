@@ -199,33 +199,37 @@ func (s *Service) EnsureActiveAccountFromPool() bool {
 	if err == nil {
 		tokenPath = filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 		if fi, err := os.Stat(tokenPath); err == nil && fi.Size() > 0 {
-			return true
+			if data, readErr := os.ReadFile(tokenPath); readErr == nil {
+				content := strings.TrimSpace(string(data))
+				if strings.HasPrefix(content, "{") {
+					return true
+				}
+			}
 		}
 	}
 
 	val, err := keyring.Get("gemini", "antigravity")
-	if err == nil && val != "" && HomeDirOverride == "" {
+	if err == nil && strings.HasPrefix(strings.TrimSpace(val), "{") && HomeDirOverride == "" {
 		if tokenPath != "" {
 			_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+			_ = os.WriteFile(tokenPath, []byte(val), 0600)
 		}
 		return true
 	}
 
 	pool, err := s.LoadAccountsPool()
 	if err == nil && len(pool) > 0 {
-		firstAcc := pool[0]
-		if firstAcc.KeyringValue != "" {
-			setErr := keyring.Set("gemini", "antigravity", firstAcc.KeyringValue)
-			if setErr != nil && tokenPath != "" {
-				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-				_ = os.WriteFile(tokenPath, []byte(firstAcc.KeyringValue), 0600)
-			} else if tokenPath != "" {
-				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-				_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		for _, acc := range pool {
+			kv := strings.TrimSpace(acc.KeyringValue)
+			if strings.HasPrefix(kv, "{") {
+				_ = keyring.Set("gemini", "antigravity", kv)
+				if tokenPath != "" {
+					_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+					_ = os.WriteFile(tokenPath, []byte(kv), 0600)
+				}
+				log.Printf("[AUTH] Restored real JSON token for '%s' from pool to token file & keyring.", MaskEmail(acc.Email))
+				return true
 			}
-			log.Printf("[AUTH] Keyring/token file empty. Auto-restored account '%s' from pool.", MaskEmail(firstAcc.Email))
-			return true
 		}
 	}
 
@@ -539,22 +543,20 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 
 	// Restore original active keyring value!
 	if backupErr == nil && backupVal != "" {
-		setErr := keyring.Set("gemini", "antigravity", backupVal)
-		if setErr != nil {
-			// Headless fallback
+		_ = keyring.Set("gemini", "antigravity", backupVal)
+		if homeDir, err := getHomeDir(); err == nil {
+			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+			_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
 			_ = os.WriteFile(tokenPath, []byte(backupVal), 0600)
-		} else {
-			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
 		}
 	} else {
 		// If there was no original backup, keep the new token active
 		if err == nil && newVal != "" {
-			setErr := keyring.Set("gemini", "antigravity", newVal)
-			if setErr != nil {
-				// Headless fallback
+			_ = keyring.Set("gemini", "antigravity", newVal)
+			if homeDir, err := getHomeDir(); err == nil {
+				tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
 				_ = os.WriteFile(tokenPath, []byte(newVal), 0600)
-			} else {
-				_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
 			}
 		}
 	}
@@ -987,11 +989,12 @@ func (s *Service) SwitchAccount(email string) error {
 		return nil
 	}
 
-	// Write dummy token file to signal we are logged in
+	// Write real token file
 	homeDir, err := getHomeDir()
 	if err == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-		_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+		_ = os.WriteFile(tokenPath, []byte(targetVal), 0600)
 	}
 
 	return nil
