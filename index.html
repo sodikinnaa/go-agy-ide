@@ -387,7 +387,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.6.0</span>
+                    <span class="text-[10px] text-slate-400">v1.6.1</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -893,7 +893,7 @@
             });
 
             // Initial refresh of workspace
-            refreshWorkspace();
+            refreshWorkspace(false, true);
             loadOpenAISettings();
             loadAvailableModels();
 
@@ -1487,7 +1487,7 @@
         }
 
         // File tree fetching
-        async function refreshWorkspace(silent = false) {
+        async function refreshWorkspace(silent = false, autoOpenDefault = false) {
             const treeContainer = document.getElementById('file-tree');
             if (!silent) {
                 treeContainer.innerHTML = '<div class="text-center text-xs text-slate-500 py-8">Loading files...</div>';
@@ -1516,7 +1516,7 @@
                 renderTree(tree, 0, treeContainer);
                 lucide.createIcons();
 
-                if (!activeFilePath) {
+                if (autoOpenDefault && !activeFilePath) {
                     const defaultFile = files.find(f => !f.isDir && (f.name === 'index.html' || f.name === 'main.go')) || files.find(f => !f.isDir);
                     if (defaultFile) {
                         openFile(defaultFile.path);
@@ -3211,7 +3211,7 @@
                 // Update workspace label and reload files tree
                 const activeName = path.split('/').pop() || path;
                 document.getElementById('workspace-label').innerText = activeName;
-                refreshWorkspace();
+                refreshWorkspace(false, true);
                 startNewChat(); // Reset chat session context for the new workspace!
             } catch (err) {
                 alert(`Gagal ngalih workspace: ${err.message}`);
@@ -3978,7 +3978,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.6.0";
+                const current = "v1.6.1";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -4557,7 +4557,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.0</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.1</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
