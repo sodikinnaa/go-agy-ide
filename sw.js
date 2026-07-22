@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agy-ide-v3';
+const CACHE_NAME = 'agy-ide-v5';
 const ASSETS = [
   '/',
   '/login-pwd',

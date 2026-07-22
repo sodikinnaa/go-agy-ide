@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.5.8"
+const AppVersion = "v1.5.9"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -574,6 +574,10 @@ func (h *Handler) HandleChatStream(w http.ResponseWriter, r *http.Request) {
 	if req.Prompt == "" {
 		http.Error(w, "missing prompt parameter", http.StatusBadRequest)
 		return
+	}
+
+	if req.Conversation == "" {
+		req.Conversation = fmt.Sprintf("temp-%d", time.Now().UnixNano())
 	}
 
 	cmd, stdoutPipe, err := h.chatSvc.StartChat(r.Context(), req, h.workspaceSvc.ActiveWorkspaceDir())

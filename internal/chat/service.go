@@ -366,7 +366,11 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		args = append(args, "--continue")
 	}
 
-	cmd := exec.CommandContext(ctx, auth.FindAgyPath(), args...)
+	// Use background context with a 1-hour timeout to prevent premature process termination
+	// when request context is cancelled (due to HTTP timeout or tab sleep).
+	cmdCtx, cmdCancel := context.WithTimeout(context.Background(), 1*time.Hour)
+
+	cmd := exec.CommandContext(cmdCtx, auth.FindAgyPath(), args...)
 	cmd.Dir = activeWorkspaceDir
 	cmd.Env = os.Environ()
 
@@ -376,7 +380,11 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		if oldCmd, exists := s.activeChatCmds[convID]; exists && oldCmd != nil && oldCmd.Process != nil {
 			_ = oldCmd.Process.Kill()
 		}
+		if oldCancel, exists := s.activeChatCancels[convID]; exists && oldCancel != nil {
+			oldCancel()
+		}
 		s.activeChatCmds[convID] = cmd
+		s.activeChatCancels[convID] = cmdCancel
 		s.mu.Unlock()
 	}
 
@@ -385,8 +393,10 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		if convID != "" {
 			s.mu.Lock()
 			delete(s.activeChatCmds, convID)
+			delete(s.activeChatCancels, convID)
 			s.mu.Unlock()
 		}
+		cmdCancel()
 		return nil, nil, err
 	}
 	cmd.Stderr = cmd.Stdout
@@ -395,8 +405,10 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		if convID != "" {
 			s.mu.Lock()
 			delete(s.activeChatCmds, convID)
+			delete(s.activeChatCancels, convID)
 			s.mu.Unlock()
 		}
+		cmdCancel()
 		return nil, nil, err
 	}
 
