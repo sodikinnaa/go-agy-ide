@@ -1,4 +1,4 @@
-const CACHE_NAME = 'agy-ide-v1';
+const CACHE_NAME = 'agy-ide-v3';
 const ASSETS = [
   '/',
   '/login-pwd',
@@ -33,6 +33,10 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
   const url = new URL(e.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return;
+  }
+
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) {
     return;
   }

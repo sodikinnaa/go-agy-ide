@@ -387,7 +387,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.5.6</span>
+                    <span class="text-[10px] text-slate-400">v1.5.7</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -2009,44 +2009,48 @@
 
             for (let i = lines.length - 1; i >= 0; i--) {
                 const line = lines[i].trim();
-                if (line.startsWith('●')) {
-                    lastToolLine = line.replace('●', '').replace(/\(ctrl\+o to expand\)/g, '').trim();
+                if (line.startsWith('●') || line.startsWith('○') || 
+                    line.startsWith('Read(') || line.startsWith('Write(') || 
+                    line.startsWith('Bash(') || line.startsWith('ManageTask(') ||
+                    line.startsWith('ViewFile(') || line.startsWith('EditFile(') ||
+                    line.startsWith('GrepSearch(') || line.startsWith('ListDir(') ||
+                    line.startsWith('RunCommand(')) {
+                    
+                    lastToolLine = line.replace(/^[●○]/, '').replace(/\(ctrl\+o to expand\)/g, '').trim();
                     break;
                 }
                 if (line.startsWith('▸') || line.includes('▸ Thought')) {
                     hasThought = true;
                 }
-                if (line.length > 0 && !line.startsWith('▸') && !line.startsWith('●') && !line.startsWith('</pre>') && !line.startsWith('<details>') && !line.startsWith('```')) {
+                if (line.length > 0 && !line.startsWith('▸') && !line.startsWith('●') && !line.startsWith('○') && !line.startsWith('</pre>') && !line.startsWith('<details>') && !line.startsWith('```')) {
                     hasOutput = true;
                 }
             }
 
             if (lastToolLine) {
-                let toolType = "🛠️ Eksekusi Tool";
+                let toolType = "🛠️ Sedang nglakokake tool";
                 let icon = "play";
                 let color = "text-brand-accent";
 
-                if (lastToolLine.includes('Read') || lastToolLine.includes('view_file')) {
-                    toolType = "📖 Moco Berkas";
+                if (lastToolLine.includes('Read') || lastToolLine.includes('view_file') || lastToolLine.includes('ViewFile')) {
+                    toolType = "📖 Sedang moco berkas";
                     icon = "file-text";
                     color = "text-blue-400";
-                } else if (lastToolLine.includes('Edit') || lastToolLine.includes('Write') || lastToolLine.includes('replace_file_content') || lastToolLine.includes('write_to_file')) {
-                    toolType = "✏️ Edit Berkas";
+                } else if (lastToolLine.includes('Edit') || lastToolLine.includes('Write') || lastToolLine.includes('replace_file_content') || lastToolLine.includes('write_to_file') || lastToolLine.includes('EditFile')) {
+                    toolType = "✏️ Sedang nulis/edit berkas";
                     icon = "edit-3";
                     color = "text-yellow-400";
-                } else if (lastToolLine.includes('Search') || lastToolLine.includes('Grep') || lastToolLine.includes('ListDir') || lastToolLine.includes('list_dir') || lastToolLine.includes('grep_search')) {
-                    toolType = "🔍 Nggoleki Berkas";
+                } else if (lastToolLine.includes('Search') || lastToolLine.includes('Grep') || lastToolLine.includes('ListDir') || lastToolLine.includes('list_dir') || lastToolLine.includes('grep_search') || lastToolLine.includes('GrepSearch')) {
+                    toolType = "🔍 Sedang nggoleki berkas";
                     icon = "search";
                     color = "text-purple-400";
-                } else if (lastToolLine.includes('Bash') || lastToolLine.includes('run_command')) {
-                    toolType = "💻 Perintah Terminal";
+                } else if (lastToolLine.includes('Bash') || lastToolLine.includes('run_command') || lastToolLine.includes('ManageTask') || lastToolLine.includes('RunCommand')) {
+                    toolType = "💻 Sedang nglakokake perintah";
                     icon = "terminal";
                     color = "text-green-400";
                 }
 
-                let detail = lastToolLine;
-                if (detail.length > 55) detail = detail.substring(0, 52) + '...';
-                return { action: `${toolType}: ${detail}`, icon: icon, color: color, isAuthError: false };
+                return { action: `${toolType}...`, icon: icon, color: color, isAuthError: false };
             }
 
             if (hasThought) {
@@ -2108,8 +2112,8 @@
                     continue;
                 }
                 
-                // Match a line starting with ● (bullet point)
-                if (trimmed.startsWith('●')) {
+                // Match a line starting with ● or ○ (bullet point)
+                if (trimmed.startsWith('●') || trimmed.startsWith('○')) {
                     if (inDetails) {
                         output.push('</pre></details>');
                         inDetails = false;
@@ -2145,12 +2149,14 @@
                         iconName = "terminal";
                     }
                     
+                    let displayLine = cleanLine.replace(/^[●○]/, '').trim();
+                    
                     output.push(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
 <summary class="cursor-pointer font-mono font-semibold text-slate-200 hover:text-white transition flex items-center justify-between select-none">
     <div class="flex items-center space-x-2">
         <i data-lucide="${iconName}" class="w-4 h-4 ${iconColor} shrink-0"></i>
         <span class="text-slate-400">[${toolName}]</span>
-        <span class="text-brand-accent">${cleanLine.replace('●', '').trim()}</span>
+        <span class="text-brand-accent">${displayLine}</span>
     </div>
     <span class="text-[10px] text-slate-500 font-normal italic">(klik kanggo ndelok detail)</span>
 </summary>
@@ -2494,29 +2500,55 @@
                         statusBanner.innerHTML = `
                             <div class="flex items-center space-x-2">
                                 <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-red-400 shrink-0"></i>
-                                <span class="font-medium">Otentikasi Dibutuhake / Timeout</span>
+                                <span class="font-medium">${parseFloat(totalTime) >= 290.0 ? 'Koneksi Entek (Timeout)' : 'Otentikasi Dibutuhake / Kosong'}</span>
                             </div>
                             <span class="text-[10px] text-red-400/80 font-bold shrink-0 ml-2 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
                         `;
                     }
                     if (textContainer && isResponseEmpty) {
-                        textContainer.innerHTML = `
-                            <div class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-2 font-mono">
-                                <div class="flex items-center space-x-2 font-bold text-amber-300">
-                                    <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
-                                    <span>Gagal Ngasilake Balesan AI</span>
+                        if (parseFloat(totalTime) >= 290.0) {
+                            textContainer.innerHTML = `
+                                <div class="p-3 bg-red-950/40 border border-red-500/30 rounded-xl text-xs text-red-200 space-y-2 font-mono">
+                                    <div class="flex items-center space-x-2 font-bold text-red-300">
+                                        <i data-lucide="shield-alert" class="w-4 h-4 text-red-400 shrink-0"></i>
+                                        <span>Gagal Ngasilake Balesan AI (Timeout)</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-300 leading-relaxed">
+                                        Koneksi entek (Request Timeout sawise 300s). Agen AI njupuk wektu kakehan kanggo mangsuli. Njenengan bisa mriksa log server utawa nyoba maneh kanthi ngganti model utawa nyuda ukuran konteks.
+                                    </p>
                                 </div>
-                                <p class="text-[11px] text-slate-300 leading-relaxed">
-                                    Sesi otentikasi Google Antigravity durung aktif utawa wis kedaluwarsa, saengga CLI agy ora bisa menehi wangsulan.
-                                </p>
-                                <div class="flex items-center space-x-2 pt-1">
-                                    <a href="/login" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-semibold text-[11px] transition flex items-center space-x-1">
-                                        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
-                                        <span>Mlebu Kanthi Google OAuth</span>
-                                    </a>
+                            `;
+                        } else if (isAuthError) {
+                            textContainer.innerHTML = `
+                                <div class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-2 font-mono">
+                                    <div class="flex items-center space-x-2 font-bold text-amber-300">
+                                        <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                                        <span>Gagal Ngasilake Balesan AI</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-300 leading-relaxed">
+                                        Sesi otentikasi Google Antigravity durung aktif utawa wis kedaluwarsa, saengga CLI agy ora bisa menehi wangsulan.
+                                    </p>
+                                    <div class="flex items-center space-x-2 pt-1">
+                                        <a href="/login" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg font-semibold text-[11px] transition flex items-center space-x-1">
+                                            <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                                            <span>Mlebu Kanthi Google OAuth</span>
+                                        </a>
+                                    </div>
                                 </div>
-                            </div>
-                        `;
+                            `;
+                        } else {
+                            textContainer.innerHTML = `
+                                <div class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-2 font-mono">
+                                    <div class="flex items-center space-x-2 font-bold text-amber-300">
+                                        <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                                        <span>Wangsulan Kosong</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-300 leading-relaxed">
+                                        CLI agy rampung tanpa menehi wangsulan. Coba priksa maneh instruksi utawa konfigurasi model njenengan.
+                                    </p>
+                                </div>
+                            `;
+                        }
                     }
                     lucide.createIcons();
                 } else {
@@ -3923,7 +3955,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.5.6";
+                const current = "v1.5.7";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -4502,7 +4534,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.6</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.7</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -4595,7 +4627,7 @@
                     </div>
                     
                     <a onclick="startWizardAuthFlow(event)" href="#" id="wizard-auth-link" target="_blank" class="w-full py-2 px-4 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded-xl text-xs font-semibold transition duration-200 flex items-center justify-center space-x-2">
-                        <i data-lucide="chrome" class="w-4 h-4 text-brand-accent"></i>
+                        <i data-lucide="globe" class="w-4 h-4 text-brand-accent"></i>
                         <span id="wizard-auth-btn-text">Mlebu karo Google (OAuth)</span>
                     </a>
 

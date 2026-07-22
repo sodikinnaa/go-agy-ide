@@ -389,7 +389,7 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		}
 		return nil, nil, err
 	}
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
 		if convID != "" {
@@ -498,6 +498,7 @@ func agyCompatibilitySystemPrompt(activeWorkspaceDir string) string {
 	sb.WriteString("- If the user asks for code, provide complete practical code or exact file-level guidance.\n")
 	sb.WriteString("- Do not pretend you executed terminal commands, read files, edited files, or used AGY tools unless that evidence is explicitly present in the conversation.\n")
 	sb.WriteString("- If a task needs real filesystem/tool execution that the OpenAI-compatible API cannot perform directly, say what should be run or changed instead of fabricating results.\n")
+	sb.WriteString("- For tasks/features related to \"Kelola Produk Kontrol Panel\", ensure all requirements are saved in a Markdown (.md) file inside the \"asset-marketing\" folder.\n")
 	sb.WriteString("- Preserve Indonesian/Javanese tone when the user uses it.\n\n")
 	sb.WriteString("Active workspace: ")
 	sb.WriteString(activeWorkspaceDir)

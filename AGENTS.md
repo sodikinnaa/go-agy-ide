@@ -28,6 +28,7 @@ A lightweight, mobile-first IDE built with Go and Antigravity AI. It provides an
 - **Entrypoints**: `main.go` is the primary entrypoint. Logic for IDE functionality is split between `main.go` and internal packages.
 
 ## 📋 Task Execution
+- **Kelola Produk Kontrol Panel**: Untuk pekerjaan/fitur terkait "Kelola Produk Kontrol Panel", pastikan semua kebutuhan disimpan dalam berkas format `.md` di dalam folder `asset-marketing`.
 - Always prefer `CGO_ENABLED=0` when building.
 - Verify frontend changes using the `visual-engineering` category and relevant UI/UX skills.
 - Test terminal runner behavior in a real bash environment (Termux preferred).
