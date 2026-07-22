@@ -62,7 +62,13 @@ func (s *Service) StartSession(workspaceDir string) error {
 			cmd = exec.Command("cmd")
 		}
 	} else {
-		cmd = exec.Command("bash", "-i")
+		// Use 'script' utility to allocate a real pseudo-terminal (PTY) on Unix/Linux systems.
+		// This enables full job control and resolves "cannot set terminal process group" & "Inappropriate ioctl for device" errors.
+		if _, err := exec.LookPath("script"); err == nil {
+			cmd = exec.Command("script", "-q", "-f", "-c", "bash -i", "/dev/null")
+		} else {
+			cmd = exec.Command("bash", "-i")
+		}
 	}
 
 	cmd.Dir = workspaceDir

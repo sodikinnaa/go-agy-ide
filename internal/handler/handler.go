@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.6.1"
+const AppVersion = "v1.6.2"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -1176,8 +1176,8 @@ func (h *Handler) HandleTerminalStream(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write(data)
 			flusher.Flush()
 		case <-ticker.C:
-			// keep alive ping
-			_, _ = w.Write([]byte(""))
+			// keep alive ping with non-empty NUL byte to keep proxy alive
+			_, _ = w.Write([]byte{0})
 			flusher.Flush()
 		case <-r.Context().Done():
 			return
