@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -156,11 +157,54 @@ func main() {
 	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
 	http.HandleFunc("/api/github/releases", h.AuthMiddleware(h.HandleGithubReleases))
 
+	var listener net.Listener
+	var listenErr error
+	originalPort := port
+
+	for {
+		listener, listenErr = net.Listen("tcp", "0.0.0.0:"+port)
+		if listenErr == nil {
+			break
+		}
+
+		p, convErr := strconv.Atoi(port)
+		if convErr != nil {
+			port = "8081"
+		} else {
+			port = strconv.Itoa(p + 1)
+		}
+	}
+
+	if port != originalPort {
+		log.Printf("[PORT UPDATE] Port %s wis dienggo, otomatis pindah menyang port kosong: %s\n", originalPort, port)
+		updateEnvPort(port)
+	}
+
 	log.Printf("Mulai server Mobile IDE ing http://0.0.0.0:%s ...\n", port)
 	log.Printf("Workspace root aktif: %s\n", workspaceSvc.ActiveWorkspaceDir())
-	if err := http.ListenAndServe("0.0.0.0:"+port, nil); err != nil {
+	if err := http.Serve(listener, nil); err != nil {
 		log.Printf("Gagal nglakokake server: %v\n", err)
 	}
+}
+
+func updateEnvPort(port string) {
+	content, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	lines := strings.Split(string(content), "\n")
+	found := false
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "PORT=") {
+			lines[i] = "PORT=" + port
+			found = true
+			break
+		}
+	}
+	if !found {
+		lines = append(lines, "PORT="+port)
+	}
+	_ = os.WriteFile(".env", []byte(strings.Join(lines, "\n")), 0600)
 }
 
 func loadEnv() {

@@ -18,7 +18,7 @@ resolve_latest_version() {
         printf '%s\n' "$tags" | head -n 1
         return
     fi
-    echo "v1.6.2"
+    echo "v1.6.3"
 }
 
 REQUESTED_VERSION="${1:-${VERSION:-}}"
@@ -413,6 +413,32 @@ else
         else
             echo "Format port salah. Nggunakake port default 8080."
         fi
+    fi
+
+    # Golek port sing kosong yen port kasebut wis dienggo
+    is_port_in_use() {
+        local check_port=$1
+        if command -v ss &>/dev/null; then
+            ss -tln | grep -q -E "(^|:)$check_port\b" && return 0
+        fi
+        if command -v netstat &>/dev/null; then
+            netstat -tln | grep -q -E "(^|:)$check_port\b" && return 0
+        fi
+        if command -v lsof &>/dev/null; then
+            lsof -i :$check_port &>/dev/null && return 0
+        fi
+        # Fallback to dev/tcp
+        (echo > /dev/tcp/127.0.0.1/$check_port) &>/dev/null && return 0
+        return 1
+    }
+
+    ORIGINAL_PORT="$PORT"
+    while is_port_in_use "$PORT"; do
+        PORT=$((PORT + 1))
+    done
+
+    if [ "$PORT" -ne "$ORIGINAL_PORT" ]; then
+        echo "Port $ORIGINAL_PORT wis dienggo. Otomatis ngganti menyang port kosong: $PORT"
     fi
 
     # Generate sandi keamanan acak (12 karakter)
