@@ -18,7 +18,7 @@ resolve_latest_version() {
         printf '%s\n' "$tags" | head -n 1
         return
     fi
-    echo "v1.6.6"
+    echo "v1.6.7"
 }
 
 REQUESTED_VERSION="${1:-${VERSION:-}}"
