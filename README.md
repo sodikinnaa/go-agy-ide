@@ -40,11 +40,11 @@ Berikut adalah galeri tampilan antarmuka Mobile IDE pada perangkat seluler (HP A
 ## Cara Instalasi & Kompilasi
 
 ### Cara Cepat (One-Line Installer - Tanpa Perlu Install Go/Compiler):
-Cukup jalankan perintah iki ing terminal server utawa Termux HP kanggo ngundhuh pre-compiled binary lan nyiapake kabeh kanthi otomatis:
+Cukup jalankan perintah iki ing terminal server, Termux HP, utawa **Git Bash ing Windows** kanggo ngundhuh pre-compiled binary lan nyiapake kabeh kanthi otomatis:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sodikinnaa/go-agy-ide/main/install.sh | bash
 ```
-*Script iki bakal otomatis ndeteksi OS lan arsitektur CPU (Linux AMD64, Linux ARM64, MacOS, lsp.) sarta ngundhuh binary sing cocog saka kaca Rilis GitHub.*
+*Script iki bakal otomatis ndeteksi OS lan arsitektur CPU (Linux AMD64, Linux ARM64, MacOS, Windows Git Bash, lsp.) sarta ngundhuh binary sing cocog saka kaca Rilis GitHub.*
 
 Yen pengin install versi/tag tartamtu sing wis dirilis, undhuh installer dhisik banjur lebokake tag-e:
 ```bash
