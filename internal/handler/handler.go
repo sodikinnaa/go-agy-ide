@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.6.4"
+const AppVersion = "v1.6.5"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -120,7 +120,7 @@ func (h *Handler) AuthMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			isGoogleLoginPage := r.URL.Path == "/login"
 			isOpenAIConfigPage := r.URL.Path == "/"
 
-			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists() || os.Getenv("OPENAI_API_KEY") != "" || (auth.HomeDirOverride == "" && auth.FindAgyPath() != "")
+			isGoogleAuthPassed := h.authSvc.CheckOAuthTokenExists()
 
 			if !isGoogleAuthPassed {
 				if strings.HasPrefix(r.URL.Path, "/api/") && !isPublicGoogleAPI && r.URL.Path != "/api/auth/logout" {
