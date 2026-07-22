@@ -387,7 +387,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.6.5</span>
+                    <span class="text-[10px] text-slate-400">v1.6.6</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -3614,7 +3614,11 @@
                 goToWizardStep(3);
             } catch (err) {
                 if (errorMsg) {
-                    errorMsg.innerText = `Gagal: ${err.message}`;
+                    let msg = `Gagal: ${err.message}`;
+                    if (err.message.includes("pipe") || err.message.includes("failed") || err.message.includes("exit") || err.message.includes("timeout")) {
+                        msg += "\n\n💡 Tips: Yen sampeyan nganggo Windows utawa ngalami masalah mlebu ing kene, mangga bukak terminal (CMD/PowerShell/Git Bash) banjur ketik perintah iki kanggo mlebu manual:\n   agy\nSawise sukses login ing terminal, mangga muat ulang (refresh) kaca iki!";
+                    }
+                    errorMsg.innerText = msg;
                     errorMsg.classList.remove('hidden');
                 }
                 codeInput.disabled = false;
@@ -3981,7 +3985,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.6.5";
+                const current = "v1.6.6";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -4560,7 +4564,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.5</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.6</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

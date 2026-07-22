@@ -448,6 +448,11 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 			}
 			if err != nil {
 				log.Printf("[AUTH READ EOF/ERROR]: %v", err)
+				s.mu.Lock()
+				if s.activeAuthURL == "" {
+					s.activeAuthURL = "ERROR: " + err.Error()
+				}
+				s.mu.Unlock()
 				break
 			}
 		}
@@ -459,6 +464,13 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 		url := s.activeAuthURL
 		s.mu.RUnlock()
 		if url != "" {
+			if strings.HasPrefix(url, "ERROR:") {
+				if backupErr == nil && backupVal != "" {
+					_ = keyring.Set("gemini", "antigravity", backupVal)
+					_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+				}
+				return "", fmt.Errorf("agy process exited early or failed to start: %s", strings.TrimPrefix(url, "ERROR: "))
+			}
 			return url, nil
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -495,11 +507,29 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 
 	_, err := io.WriteString(stdin, code+"\n")
 	if err != nil {
+		if s.CheckOAuthTokenExists() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			return nil
+		}
 		if backupErr == nil && backupVal != "" {
 			_ = keyring.Set("gemini", "antigravity", backupVal)
 			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
 		}
 		return fmt.Errorf("failed to write code to stdin: %w", err)
+	}
+
+	// Poll for token file existence in a loop to avoid waiting for process exit
+	for i := 0; i < 50; i++ {
+		if s.CheckOAuthTokenExists() {
+			// Success! Kill the active auth command
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	done := make(chan error, 1)
@@ -517,11 +547,15 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 				waitErr = fmt.Errorf("agy authentication failed: %w", err)
 			}
 		}
-	case <-time.After(60 * time.Second):
+	case <-time.After(5 * time.Second):
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
-		waitErr = fmt.Errorf("agy authentication timeout (60s)")
+		if s.CheckOAuthTokenExists() {
+			waitErr = nil
+		} else {
+			waitErr = fmt.Errorf("agy authentication timeout")
+		}
 	}
 
 	if waitErr != nil {
