@@ -387,7 +387,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.5.7</span>
+                    <span class="text-[10px] text-slate-400">v1.5.8</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -2492,29 +2492,40 @@
 
                 const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
                 const isAuthError = fullText.includes('Authentication required') || fullText.includes('authentication timed out');
+                const isTimeoutError = fullText.toLowerCase().includes('timeout waiting for response') || 
+                                       fullText.toLowerCase().includes('request timeout') || 
+                                       fullText.toLowerCase().includes('deadline exceeded') || 
+                                       parseFloat(totalTime) >= 290.0;
                 const isResponseEmpty = !textContainer || textContainer.innerText.trim() === '';
+                const isGenericError = fullText.trim().startsWith('Error:') || fullText.trim().startsWith('Command failed:');
+                const hasFailed = isAuthError || isTimeoutError || isResponseEmpty || isGenericError;
 
-                if (isAuthError || isResponseEmpty) {
+                if (hasFailed) {
                     if (statusBanner) {
                         statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-red-950/40 border border-red-500/30 rounded-xl text-[11px] font-mono text-red-300 select-none transition-all';
+                        let statusText = 'Gagal Proses';
+                        if (isTimeoutError) statusText = 'Koneksi Entek (Timeout)';
+                        else if (isAuthError) statusText = 'Otentikasi Dibutuhake';
+                        else if (isResponseEmpty) statusText = 'Respons Kosong';
+                        
                         statusBanner.innerHTML = `
                             <div class="flex items-center space-x-2">
                                 <i data-lucide="alert-circle" class="w-3.5 h-3.5 text-red-400 shrink-0"></i>
-                                <span class="font-medium">${parseFloat(totalTime) >= 290.0 ? 'Koneksi Entek (Timeout)' : 'Otentikasi Dibutuhake / Kosong'}</span>
+                                <span class="font-medium">${statusText}</span>
                             </div>
                             <span class="text-[10px] text-red-400/80 font-bold shrink-0 ml-2 bg-red-500/10 border border-red-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
                         `;
                     }
-                    if (textContainer && isResponseEmpty) {
-                        if (parseFloat(totalTime) >= 290.0) {
+                    if (textContainer) {
+                        if (isTimeoutError) {
                             textContainer.innerHTML = `
                                 <div class="p-3 bg-red-950/40 border border-red-500/30 rounded-xl text-xs text-red-200 space-y-2 font-mono">
                                     <div class="flex items-center space-x-2 font-bold text-red-300">
                                         <i data-lucide="shield-alert" class="w-4 h-4 text-red-400 shrink-0"></i>
                                         <span>Gagal Ngasilake Balesan AI (Timeout)</span>
                                     </div>
-                                    <p class="text-[11px] text-slate-300 leading-relaxed">
-                                        Koneksi entek (Request Timeout sawise 300s). Agen AI njupuk wektu kakehan kanggo mangsuli. Njenengan bisa mriksa log server utawa nyoba maneh kanthi ngganti model utawa nyuda ukuran konteks.
+                                    <p class="text-[11px] text-slate-300 leading-relaxed font-mono">
+                                        Koneksi entek (Request Timeout sawise 300s). Agen AI njupuk wektu kakehan kanggo mangsuli utawa ngalami timeout.
                                     </p>
                                 </div>
                             `;
@@ -2536,7 +2547,19 @@
                                     </div>
                                 </div>
                             `;
-                        } else {
+                        } else if (isGenericError) {
+                            textContainer.innerHTML = `
+                                <div class="p-3 bg-red-950/40 border border-red-500/30 rounded-xl text-xs text-red-200 space-y-2 font-mono">
+                                    <div class="flex items-center space-x-2 font-bold text-red-300">
+                                        <i data-lucide="shield-alert" class="w-4 h-4 text-red-400 shrink-0"></i>
+                                        <span>Gagal Ngasilake Balesan AI (Error)</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-300 leading-relaxed font-mono">
+                                        ${fullText.trim()}
+                                    </p>
+                                </div>
+                            `;
+                        } else if (isResponseEmpty) {
                             textContainer.innerHTML = `
                                 <div class="p-3 bg-amber-950/40 border border-amber-500/30 rounded-xl text-xs text-amber-200 space-y-2 font-mono">
                                     <div class="flex items-center space-x-2 font-bold text-amber-300">
@@ -3955,7 +3978,7 @@
                 const latestStable = stableTags.sort(compareTags).pop();
                 const latestTesting = testingTags.sort(compareTags).pop();
                 const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.5.7";
+                const current = "v1.5.8";
 
                 if (verDisplay) verDisplay.innerText = latest;
                 if (releaseSelect) {
@@ -4534,7 +4557,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.7</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.5.8</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
