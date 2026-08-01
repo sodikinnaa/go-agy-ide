@@ -15,6 +15,7 @@ import (
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
 	"mobile-agy/internal/handler"
+	"mobile-agy/internal/telegram"
 	"mobile-agy/internal/terminal"
 	"mobile-agy/internal/workspace"
 )
@@ -91,6 +92,11 @@ func main() {
 	authSvc := auth.NewService(serverStartDir)
 	chatSvc := chat.NewService()
 	terminalSvc := terminal.NewService()
+	telegramSvc := telegram.NewService(chatSvc, workspaceSvc)
+
+	if telegramSvc.GetConfig().Enabled {
+		go telegramSvc.Start()
+	}
 
 	// Initialize HTML pages embedding
 	htmlPages := handler.EmbeddedHTML{
@@ -104,7 +110,7 @@ func main() {
 	}
 
 	// Initialize HTTP handler
-	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, htmlPages)
+	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, telegramSvc, htmlPages)
 
 	// Public PWA routes
 	http.HandleFunc("/manifest.json", h.HandleManifest)
@@ -155,6 +161,8 @@ func main() {
 	http.HandleFunc("/api/browser/proxy", h.AuthMiddleware(h.HandleBrowserProxy))
 	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
 	http.HandleFunc("/api/github/releases", h.AuthMiddleware(h.HandleGithubReleases))
+	http.HandleFunc("/api/telegram/config", h.AuthMiddleware(h.HandleTelegramConfigGet))
+	http.HandleFunc("/api/telegram/config/save", h.AuthMiddleware(h.HandleTelegramConfigSave))
 
 	listener, listenErr := net.Listen("tcp", "0.0.0.0:"+port)
 	if listenErr != nil {

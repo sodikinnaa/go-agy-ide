@@ -9,6 +9,7 @@ import (
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
 	"mobile-agy/internal/terminal"
+	"mobile-agy/internal/telegram"
 	"mobile-agy/internal/workspace"
 	"net/http"
 	"net/url"
@@ -39,6 +40,7 @@ type Handler struct {
 	authSvc      *auth.Service
 	chatSvc      *chat.Service
 	terminalSvc  *terminal.Service
+	telegramSvc  *telegram.Service
 	html         EmbeddedHTML
 }
 
@@ -47,6 +49,7 @@ func NewHandler(
 	authSvc *auth.Service,
 	chatSvc *chat.Service,
 	terminalSvc *terminal.Service,
+	telegramSvc *telegram.Service,
 	html EmbeddedHTML,
 ) *Handler {
 	return &Handler{
@@ -54,6 +57,7 @@ func NewHandler(
 		authSvc:      authSvc,
 		chatSvc:      chatSvc,
 		terminalSvc:  terminalSvc,
+		telegramSvc:  telegramSvc,
 		html:         html,
 	}
 }
@@ -1084,7 +1088,8 @@ func (h *Handler) HandleGithubReleases(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Header.Set("User-Agent", "go-agy-ide")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Gagal nyambung menyang GitHub API: %v", err), http.StatusBadGateway)
 		return
@@ -1386,5 +1391,42 @@ func (h *Handler) HandleBrowserProxy(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(resp.StatusCode)
 	_, _ = io.Copy(w, resp.Body)
+}
+
+func (h *Handler) HandleTelegramConfigGet(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	cfg := h.telegramSvc.GetConfig()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"botToken":     cfg.BotToken,
+		"allowedUsers": cfg.AllowedUsers,
+		"enabled":      cfg.Enabled,
+		"isRunning":    h.telegramSvc.IsRunning(),
+	})
+}
+
+func (h *Handler) HandleTelegramConfigSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var cfg telegram.Config
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if err := h.telegramSvc.SaveConfig(cfg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "ok",
+		"message":   "Konfigurasi Telegram kasil disimpen.",
+		"isRunning": h.telegramSvc.IsRunning(),
+	})
 }
 

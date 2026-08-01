@@ -25,3 +25,7 @@ mobile-ide/
 
 # Scratch folder
 scratch/
+
+# Local workspace folder and telegram config
+Workspace/
+telegram_config.json
