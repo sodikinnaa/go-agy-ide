@@ -1469,6 +1469,72 @@ func (s *Service) SwitchAccount(email string) error {
 	return nil
 }
 
+// RotateToNextHealthyAccount updates status of current account if reason provided, and rotates to the next available healthy account in accounts_pool.json.
+func (s *Service) RotateToNextHealthyAccount(reason string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	pool, err := s.LoadAccountsPool()
+	if err != nil || len(pool) == 0 {
+		return "", false, fmt.Errorf("no accounts available in pool")
+	}
+
+	currentEmail := s.GetAuthenticatedEmail()
+
+	if currentEmail != "" && reason != "" {
+		for i, entry := range pool {
+			if entry.Email == currentEmail {
+				if strings.Contains(reason, "403") || strings.Contains(reason, "TOS_VIOLATION") || strings.Contains(reason, "disabled") {
+					pool[i].Status = "suspended"
+				} else if strings.Contains(reason, "429") || strings.Contains(reason, "quota") {
+					pool[i].Status = "quota_exhausted"
+				} else {
+					pool[i].Status = "unauthenticated"
+				}
+				pool[i].ErrorMsg = reason
+				pool[i].LastChecked = time.Now()
+				break
+			}
+		}
+		_ = s.SaveAccountsPool(pool)
+	}
+
+	var targetAccount *AccountEntry
+	for _, entry := range pool {
+		if entry.Email != currentEmail && entry.Status != "suspended" && entry.Status != "quota_exhausted" && entry.Status != "unauthenticated" {
+			t := entry
+			targetAccount = &t
+			break
+		}
+	}
+
+	if targetAccount == nil {
+		for _, entry := range pool {
+			if entry.Email != currentEmail && entry.Status != "suspended" {
+				t := entry
+				targetAccount = &t
+				break
+			}
+		}
+	}
+
+	if targetAccount == nil {
+		return currentEmail, false, fmt.Errorf("no healthy alternative accounts found in pool")
+	}
+
+	targetVal := targetAccount.KeyringValue
+	_ = keyring.Set("gemini", "antigravity", targetVal)
+	homeDir, _ := getHomeDir()
+	if homeDir != "" {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+		_ = os.WriteFile(tokenPath, []byte(targetVal), 0600)
+	}
+
+	log.Printf("[AUTH POOL ROTATE] Successfully rotated from '%s' to healthy account '%s' (reason: %s)", currentEmail, targetAccount.Email, reason)
+	return targetAccount.Email, true, nil
+}
+
 func (s *Service) DeleteAccount(email string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

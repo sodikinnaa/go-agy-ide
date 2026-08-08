@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"mobile-agy/internal/chat"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -186,10 +188,24 @@ func (h *Handler) HandleV1ChatCompletions(w http.ResponseWriter, r *http.Request
 		Conversation: convID,
 	}
 
-	cmd, stdoutPipe, err := h.chatSvc.StartChat(r.Context(), chatReq, activeWorkspace)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	var cmd *exec.Cmd
+	var stdoutPipe io.ReadCloser
+	var err error
+
+	for attempt := 0; attempt < 3; attempt++ {
+		cmd, stdoutPipe, err = h.chatSvc.StartChat(r.Context(), chatReq, activeWorkspace)
+		if err != nil {
+			errStr := err.Error()
+			if strings.Contains(errStr, "403") || strings.Contains(errStr, "disabled") || strings.Contains(errStr, "quota") || strings.Contains(errStr, "429") || strings.Contains(errStr, "UNAUTHENTICATED") {
+				if _, rotated, rotErr := h.authSvc.RotateToNextHealthyAccount(errStr); rotErr == nil && rotated {
+					log.Printf("[OPENAI WRAPPER] Account failure on attempt %d (%v). Rotated to next healthy account and retrying...", attempt+1, errStr)
+					continue
+				}
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		break
 	}
 
 	defer h.chatSvc.CleanupChat(convID, cmd)
@@ -281,6 +297,11 @@ func (h *Handler) nonStreamOpenAIChatResponse(w http.ResponseWriter, chatID stri
 	outBytes, _ := io.ReadAll(stdoutPipe)
 	fullText := string(outBytes)
 	fullText = strings.ReplaceAll(fullText, "<!-- keep-alive -->", "")
+
+	if strings.Contains(fullText, "status 403") || strings.Contains(fullText, "TOS_VIOLATION") || strings.Contains(fullText, "disabled in this account") || strings.Contains(fullText, "PERMISSION_DENIED") || strings.Contains(fullText, "quota summary") {
+		log.Printf("[OPENAI WRAPPER] Detected account error in response text: %s. Triggering automatic pool rotation...", fullText)
+		_, _, _ = h.authSvc.RotateToNextHealthyAccount(fullText)
+	}
 
 	resp := OpenAIChatCompletionResponse{
 		ID:      chatID,

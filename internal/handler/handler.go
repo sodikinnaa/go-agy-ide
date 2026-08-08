@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.6.9"
+const AppVersion = "v1.7.0"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -1026,7 +1026,7 @@ func (h *Handler) HandleSelfUpdate(w http.ResponseWriter, r *http.Request) {
 	_ = os.MkdirAll(mobileIdeDir, 0755)
 	_ = writeMergedEnv(filepath.Join(mobileIdeDir, ".env"), envUpdates)
 
-	if !strings.HasSuffix(os.Args[0], ".test") && !strings.HasSuffix(os.Args[0], ".test.exe") {
+	if !strings.Contains(os.Args[0], ".test") {
 		go func() {
 			// Tunggu 1 detik agar respon HTTP 200 OK sampai ke klien (HP) sebelum server mati/di-update
 			time.Sleep(1 * time.Second)
