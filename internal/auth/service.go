@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ type Service struct {
 	mu                     sync.RWMutex
 	serverStartDir         string
 	secretPassword         string
+	wrapperAPIKey          string
 	passwordSessionToken   string
 	bypassDynamicAuthCheck bool
 
@@ -36,6 +38,7 @@ func NewService(serverStartDir string) *Service {
 		serverStartDir: serverStartDir,
 	}
 	s.LoadPassword()
+	s.LoadAPIKey()
 	return s
 }
 
@@ -81,6 +84,91 @@ func (s *Service) LoadPassword() {
 	s.secretPassword = s.GenerateRandomPassword(8)
 	_ = os.WriteFile(configPath, []byte(s.secretPassword), 0600)
 	log.Printf("[SECURITY] Sandi keamanan login acak digawe: %s (disimpen ing password.txt)\n", s.secretPassword)
+}
+
+func (s *Service) LoadAPIKey() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	envKey := os.Getenv("OPENAI_WRAPPER_KEY")
+	if envKey != "" {
+		s.wrapperAPIKey = envKey
+		log.Printf("[SECURITY] OpenAI Wrapper API key dimuat saka env variable OPENAI_WRAPPER_KEY\n")
+		return
+	}
+
+	configPath := filepath.Join(s.serverStartDir, "api_key.txt")
+	data, err := os.ReadFile(configPath)
+	if err == nil {
+		val := strings.TrimSpace(string(data))
+		if val != "" {
+			s.wrapperAPIKey = val
+			log.Printf("[SECURITY] OpenAI Wrapper API key dimuat saka %s\n", configPath)
+			return
+		}
+	}
+
+	s.wrapperAPIKey = "sk-agy-" + s.GenerateRandomPassword(32)
+	_ = os.WriteFile(configPath, []byte(s.wrapperAPIKey), 0600)
+	s.saveWrapperKeyToEnv(s.wrapperAPIKey)
+	log.Printf("[SECURITY] OpenAI Wrapper API key acak digawe: %s (disimpen ing api_key.txt)\n", s.wrapperAPIKey)
+}
+
+func (s *Service) GetAPIKey() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.wrapperAPIKey
+}
+
+func (s *Service) VerifyAPIKey(key string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.wrapperAPIKey == "" || key == "" {
+		return false
+	}
+	return key == s.wrapperAPIKey
+}
+
+func (s *Service) RegenerateAPIKey() (string, error) {
+	s.mu.Lock()
+	newKey := "sk-agy-" + s.GenerateRandomPassword(32)
+	s.wrapperAPIKey = newKey
+	s.mu.Unlock()
+
+	configPath := filepath.Join(s.serverStartDir, "api_key.txt")
+	if err := os.WriteFile(configPath, []byte(newKey), 0600); err != nil {
+		log.Printf("[SECURITY] Gagal nulis API key anyar menyang %s: %v\n", configPath, err)
+		return "", err
+	}
+
+	s.saveWrapperKeyToEnv(newKey)
+	return newKey, nil
+}
+
+func (s *Service) saveWrapperKeyToEnv(key string) {
+	envPath := filepath.Join(s.serverStartDir, ".env")
+	if _, err := os.Stat(envPath); err == nil {
+		data, readErr := os.ReadFile(envPath)
+		if readErr == nil {
+			lines := strings.Split(string(data), "\n")
+			updated := false
+			for i, line := range lines {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "OPENAI_WRAPPER_KEY=") {
+					lines[i] = fmt.Sprintf("OPENAI_WRAPPER_KEY=%q", key)
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				lines = append(lines, fmt.Sprintf("OPENAI_WRAPPER_KEY=%q", key))
+			}
+			_ = os.WriteFile(envPath, []byte(strings.Join(lines, "\n")), 0600)
+		}
+	} else {
+		_ = os.WriteFile(envPath, []byte(fmt.Sprintf("OPENAI_WRAPPER_KEY=%q\n", key)), 0600)
+	}
+	os.Setenv("OPENAI_WRAPPER_KEY", key)
 }
 
 func (s *Service) VerifyPassword(pwd string) bool {
@@ -262,6 +350,22 @@ func (s *Service) EnsureActiveAccountFromPool() bool {
 
 	pool, err := s.LoadAccountsPool()
 	if err == nil && len(pool) > 0 {
+		// First pass: try healthy accounts
+		for _, acc := range pool {
+			if acc.Status != "suspended" && acc.Status != "unauthenticated" {
+				kv := strings.TrimSpace(acc.KeyringValue)
+				if strings.HasPrefix(kv, "{") {
+					_ = keyring.Set("gemini", "antigravity", kv)
+					if tokenPath != "" {
+						_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+						_ = os.WriteFile(tokenPath, []byte(kv), 0600)
+					}
+					log.Printf("[AUTH] Restored real JSON token for healthy account '%s' from pool to token file & keyring.", MaskEmail(acc.Email))
+					return true
+				}
+			}
+		}
+		// Second pass: fallback to any account with valid token JSON
 		for _, acc := range pool {
 			kv := strings.TrimSpace(acc.KeyringValue)
 			if strings.HasPrefix(kv, "{") {
@@ -485,6 +589,26 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 	return "", fmt.Errorf("failed to get authentication URL from agy (timeout)")
 }
 
+func isNewTokenAvailable(backupVal string) (string, bool) {
+	homeDir, err := getHomeDir()
+	if err == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if data, readErr := os.ReadFile(tokenPath); readErr == nil {
+			content := strings.TrimSpace(string(data))
+			if content != "" && content != "keychain-authenticated-dummy-token" && content != backupVal && strings.HasPrefix(content, "{") {
+				return content, true
+			}
+		}
+	}
+	if krVal, err := keyring.Get("gemini", "antigravity"); err == nil {
+		content := strings.TrimSpace(krVal)
+		if content != "" && content != "keychain-authenticated-dummy-token" && content != backupVal && strings.HasPrefix(content, "{") {
+			return content, true
+		}
+	}
+	return "", false
+}
+
 func (s *Service) SubmitGoogleAuthCode(code string) error {
 	s.mu.Lock()
 	cmd := s.activeAuthCmd
@@ -507,10 +631,11 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 
 	_, err := io.WriteString(stdin, code+"\n")
 	if err != nil {
-		if s.CheckOAuthTokenExists() {
+		if tokenStr, ok := isNewTokenAvailable(backupVal); ok {
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
+			_ = s.saveTokenToPoolAndRestoreActive(tokenStr, backupVal, backupErr)
 			return nil
 		}
 		if backupErr == nil && backupVal != "" {
@@ -520,121 +645,124 @@ func (s *Service) SubmitGoogleAuthCode(code string) error {
 		return fmt.Errorf("failed to write code to stdin: %w", err)
 	}
 
-	// Poll for token file existence in a loop to avoid waiting for process exit
+	var newVal string
+	// Poll for new token file/keyring entry in a loop
 	for i := 0; i < 50; i++ {
-		if s.CheckOAuthTokenExists() {
-			// Success! Kill the active auth command
+		if tokenStr, ok := isNewTokenAvailable(backupVal); ok {
+			newVal = tokenStr
 			if cmd.Process != nil {
 				_ = cmd.Process.Kill()
 			}
-			return nil
+			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Wait()
-	}()
+	if newVal == "" {
+		done := make(chan error, 1)
+		go func() {
+			done <- cmd.Wait()
+		}()
 
-	var waitErr error
-	select {
-	case err := <-done:
-		if err != nil {
-			if s.CheckOAuthTokenExists() {
-				waitErr = nil
-			} else {
-				waitErr = fmt.Errorf("agy authentication failed: %w", err)
-			}
-		}
-	case <-time.After(5 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		if s.CheckOAuthTokenExists() {
-			waitErr = nil
-		} else {
-			waitErr = fmt.Errorf("agy authentication timeout")
-		}
-	}
-
-	if waitErr != nil {
-		if backupErr == nil && backupVal != "" {
-			_ = keyring.Set("gemini", "antigravity", backupVal)
-			_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
-		}
-		return waitErr
-	}
-
-	// Success! Read the newly generated token from the keyring
-	newVal, err := keyring.Get("gemini", "antigravity")
-	if err != nil {
-		// Fallback: read from file directly in headless environment
-		homeDir, pathErr := getHomeDir()
-		if pathErr == nil {
-			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
-				val := string(fileData)
-				if val != "" && val != "keychain-authenticated-dummy-token" {
-					newVal = val
-					err = nil
+		select {
+		case err := <-done:
+			if err != nil {
+				if tokenStr, ok := isNewTokenAvailable(backupVal); ok {
+					newVal = tokenStr
+				} else {
+					if backupErr == nil && backupVal != "" {
+						_ = keyring.Set("gemini", "antigravity", backupVal)
+						_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+					}
+					return fmt.Errorf("agy authentication failed: %w", err)
 				}
 			}
+		case <-time.After(5 * time.Second):
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			if tokenStr, ok := isNewTokenAvailable(backupVal); ok {
+				newVal = tokenStr
+			} else {
+				if backupErr == nil && backupVal != "" {
+					_ = keyring.Set("gemini", "antigravity", backupVal)
+					_ = os.WriteFile(tokenPath, []byte("keychain-authenticated-dummy-token"), 0600)
+				}
+				return fmt.Errorf("agy authentication timeout")
+			}
 		}
 	}
-	if err == nil && newVal != "" {
-		// Sync this new token to the pool
+
+	if newVal == "" {
+		if tokenStr, ok := isNewTokenAvailable(backupVal); ok {
+			newVal = tokenStr
+		}
+	}
+
+	if newVal != "" {
+		return s.saveTokenToPoolAndRestoreActive(newVal, backupVal, backupErr)
+	}
+
+	return nil
+}
+
+func (s *Service) saveTokenToPoolAndRestoreActive(newVal, backupVal string, backupErr error) error {
+	// Extract email using multi-tier strategy: 1) JWT decode id_token, 2) fetchEmailFromToken, 3) log parsing
+	email := extractEmailFromTokenJSON(newVal)
+	if email == "" {
 		var kt struct {
 			Token struct {
 				AccessToken string `json:"access_token"`
 			} `json:"token"`
 		}
 		if json.Unmarshal([]byte(newVal), &kt) == nil && kt.Token.AccessToken != "" {
-			email, fetchErr := fetchEmailFromToken(kt.Token.AccessToken)
-			if fetchErr != nil {
-				email = s.GetAuthenticatedEmail()
-			}
-			if email == "" {
-				email = "Unknown Account"
-			}
-			pool, loadErr := s.LoadAccountsPool()
-			if loadErr == nil {
-				found := false
-				for i, entry := range pool {
-					if entry.Email == email {
-						pool[i].KeyringValue = newVal
-						found = true
-						break
-					}
-				}
-				if !found {
-					pool = append(pool, AccountEntry{
-						Email:        email,
-						KeyringValue: newVal,
-					})
-				}
-				_ = s.SaveAccountsPool(pool)
-			}
+			email, _ = fetchEmailFromToken(kt.Token.AccessToken)
 		}
 	}
+	if email == "" {
+		email = s.GetAuthenticatedEmail()
+	}
+	if email == "" {
+		email = "Unknown Account"
+	}
 
-	// Restore original active keyring value!
-	if backupErr == nil && backupVal != "" {
+	// Ensure new account is ALWAYS saved to accounts_pool.json
+	pool, loadErr := s.LoadAccountsPool()
+	if loadErr != nil {
+		pool = []AccountEntry{}
+	}
+	found := false
+	for i, entry := range pool {
+		if entry.Email == email || (email != "Unknown Account" && entry.Email == "Unknown Account" && entry.KeyringValue == newVal) || entry.KeyringValue == newVal {
+			pool[i].Email = email
+			pool[i].KeyringValue = newVal
+			found = true
+			break
+		}
+	}
+	if !found {
+		pool = append(pool, AccountEntry{
+			Email:        email,
+			KeyringValue: newVal,
+		})
+	}
+	_ = s.SaveAccountsPool(pool)
+
+	homeDir, _ := getHomeDir()
+	tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+
+	// Restore original active keyring/file value if backupVal was valid JSON token, or set newVal active
+	if backupErr == nil && backupVal != "" && backupVal != "keychain-authenticated-dummy-token" && strings.HasPrefix(strings.TrimSpace(backupVal), "{") {
 		_ = keyring.Set("gemini", "antigravity", backupVal)
-		if homeDir, err := getHomeDir(); err == nil {
-			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if homeDir != "" {
 			_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
 			_ = os.WriteFile(tokenPath, []byte(backupVal), 0600)
 		}
-	} else {
-		// If there was no original backup, keep the new token active
-		if err == nil && newVal != "" {
-			_ = keyring.Set("gemini", "antigravity", newVal)
-			if homeDir, err := getHomeDir(); err == nil {
-				tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-				_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
-				_ = os.WriteFile(tokenPath, []byte(newVal), 0600)
-			}
+	} else if newVal != "" {
+		_ = keyring.Set("gemini", "antigravity", newVal)
+		if homeDir != "" {
+			_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+			_ = os.WriteFile(tokenPath, []byte(newVal), 0600)
 		}
 	}
 
@@ -677,10 +805,13 @@ func (s *Service) GetGCPProject() string {
 func (s *Service) GetAuthenticatedEmail() string {
 	// 1. Try to read active token from keyring / fallback file
 	var activeToken string
-	val, err := keyring.Get("gemini", "antigravity")
-	if err == nil && val != "" {
-		activeToken = val
-	} else {
+	if HomeDirOverride == "" {
+		val, err := keyring.Get("gemini", "antigravity")
+		if err == nil && val != "" {
+			activeToken = val
+		}
+	}
+	if activeToken == "" {
 		// Try fallback file
 		homeDir, _ := getHomeDir()
 		if homeDir != "" {
@@ -692,12 +823,17 @@ func (s *Service) GetAuthenticatedEmail() string {
 		}
 	}
 
-	// 2. If we have a token, look it up in the accounts pool
+	// 2. If we have a token, decode email directly from JWT id_token
 	if activeToken != "" && activeToken != "keychain-authenticated-dummy-token" {
+		if email := extractEmailFromTokenJSON(activeToken); email != "" {
+			return email
+		}
+
+		// 3. Look it up in the accounts pool
 		pool, err := s.LoadAccountsPool()
 		if err == nil {
 			for _, entry := range pool {
-				if entry.KeyringValue == activeToken {
+				if entry.KeyringValue == activeToken && entry.Email != "" && entry.Email != "Unknown Account" {
 					return entry.Email
 				}
 			}
@@ -752,34 +888,139 @@ type QuotaGroup struct {
 	ResetTime         string  `json:"resetTime"`
 }
 
+type AccountPoolItem struct {
+	Email       string    `json:"email"`
+	Status      string    `json:"status"`
+	ErrorMsg    string    `json:"errorMsg,omitempty"`
+	LastChecked time.Time `json:"lastChecked,omitempty"`
+}
+
 type QuotaSummaryResponse struct {
-	Groups    []QuotaGroup `json:"groups"`
-	Exhausted bool         `json:"exhausted"`
-	Error     string       `json:"error,omitempty"`
+	Groups    []QuotaGroup      `json:"groups"`
+	Exhausted bool              `json:"exhausted"`
+	Error     string            `json:"error,omitempty"`
+	Accounts  []AccountPoolItem `json:"accounts,omitempty"`
+}
+
+func (s *Service) getPoolItems() []AccountPoolItem {
+	pool, err := s.LoadAccountsPool()
+	if err != nil {
+		return []AccountPoolItem{}
+	}
+	items := make([]AccountPoolItem, len(pool))
+	for i, entry := range pool {
+		status := entry.Status
+		if status == "" {
+			status = "valid"
+		}
+		items[i] = AccountPoolItem{
+			Email:       entry.Email,
+			Status:      status,
+			ErrorMsg:    entry.ErrorMsg,
+			LastChecked: entry.LastChecked,
+		}
+	}
+	return items
+}
+
+func (s *Service) UpdateAccountStatus(email string, status string, errorMsg string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if email == "" {
+		return nil
+	}
+
+	path := s.GetAccountsPoolPath()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	var pool []AccountEntry
+	if err := json.Unmarshal(data, &pool); err != nil {
+		return err
+	}
+
+	updated := false
+	for i, entry := range pool {
+		if entry.Email == email {
+			pool[i].Status = status
+			pool[i].ErrorMsg = errorMsg
+			pool[i].LastChecked = time.Now()
+			updated = true
+			break
+		}
+	}
+
+	if updated {
+		_ = os.MkdirAll(filepath.Dir(path), 0755)
+		outData, err := json.MarshalIndent(pool, "", "  ")
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(path, outData, 0600)
+	}
+	return nil
+}
+
+func (s *Service) GetOAuthTokenString() string {
+	// 1. Check keyring if HomeDirOverride is empty
+	if HomeDirOverride == "" {
+		val, err := keyring.Get("gemini", "antigravity")
+		val = strings.TrimSpace(val)
+		if err == nil && val != "" && val != "keychain-authenticated-dummy-token" && strings.HasPrefix(val, "{") {
+			return val
+		}
+	}
+
+	// 2. Check file ~/.gemini/antigravity-cli/antigravity-oauth-token
+	homeDir, pathErr := getHomeDir()
+	if pathErr == nil {
+		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+		if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
+			c := strings.TrimSpace(string(fileData))
+			if c != "" && c != "keychain-authenticated-dummy-token" && strings.HasPrefix(c, "{") {
+				return c
+			}
+		}
+	}
+
+	// 3. Check accounts_pool.json for active/first valid account if token not in keyring/file
+	pool, poolErr := s.LoadAccountsPool()
+	if poolErr == nil && len(pool) > 0 {
+		for _, acc := range pool {
+			kv := strings.TrimSpace(acc.KeyringValue)
+			if kv != "" && kv != "keychain-authenticated-dummy-token" && strings.HasPrefix(kv, "{") {
+				_ = keyring.Set("gemini", "antigravity", kv)
+				if homeDir != "" {
+					tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
+					_ = os.MkdirAll(filepath.Dir(tokenPath), 0755)
+					_ = os.WriteFile(tokenPath, []byte(kv), 0600)
+				}
+				log.Printf("[AUTH] Restored real JSON token for '%s' from pool to token file & keyring.", MaskEmail(acc.Email))
+				return kv
+			}
+		}
+	}
+
+	return ""
 }
 
 func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
-	if !s.CheckOAuthTokenExists() {
+	val := s.GetOAuthTokenString()
+	if val == "" {
+		if os.Getenv("OPENAI_API_KEY") != "" {
+			return nil, fmt.Errorf("menggunakan provider OpenAI (OPENAI_API_KEY aktif), detail quota Google Antigravity tidak tersedia")
+		}
 		return nil, fmt.Errorf("user is not authenticated")
 	}
 
-	val, err := keyring.Get("gemini", "antigravity")
-	if err != nil {
-		// Fallback: read from file directly in headless environment
-		homeDir, pathErr := getHomeDir()
-		if pathErr == nil {
-			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
-			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
-				val = string(fileData)
-			}
-		}
-		if val == "" {
-			return nil, fmt.Errorf("failed to retrieve credentials from keyring: %w", err)
-		}
-	}
-
 	var kt struct {
-		Token struct {
+		AccessToken string `json:"access_token"`
+		Token       struct {
 			AccessToken string `json:"access_token"`
 		} `json:"token"`
 	}
@@ -789,75 +1030,129 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 
 	accessToken := kt.Token.AccessToken
 	if accessToken == "" {
+		accessToken = kt.AccessToken
+	}
+	if accessToken == "" {
 		return nil, fmt.Errorf("access token is empty in credentials")
 	}
 
 	project := s.GetGCPProject()
 
-	var resp *http.Response
-	var respBytes []byte
+	endpoints := []string{
+		"https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+		"https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+	}
 
 	projectsToTry := []string{project}
 	if project != "" {
 		projectsToTry = append(projectsToTry, "")
 	}
 
+	var successResp *http.Response
+	var successBytes []byte
 	var lastErr error
-	for _, proj := range projectsToTry {
-		url := "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
-		bodyMap := map[string]string{
-			"project": proj,
+
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	for _, endpoint := range endpoints {
+		for _, proj := range projectsToTry {
+			bodyMap := map[string]string{
+				"project": proj,
+			}
+			bodyBytes, _ := json.Marshal(bodyMap)
+
+			req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(bodyBytes))
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("User-Agent", "antigravity/cli/1.2.3")
+
+			resp, err := client.Do(req)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			respBytes, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				lastErr = err
+				continue
+			}
+
+			bodyStr := string(respBytes)
+			activeEmail := s.GetAuthenticatedEmail()
+
+			if resp.StatusCode == http.StatusOK {
+				if activeEmail != "" {
+					_ = s.UpdateAccountStatus(activeEmail, "valid", "")
+				}
+				successResp = resp
+				successBytes = respBytes
+				lastErr = nil
+				break
+			}
+
+			if resp.StatusCode == http.StatusForbidden || strings.Contains(bodyStr, "TOS_VIOLATION") || strings.Contains(bodyStr, "violation of Terms of Service") {
+				errMsg := bodyStr
+				if strings.Contains(bodyStr, "This service has been disabled in this account for violation of Terms of Service") {
+					errMsg = "This service has been disabled in this account for violation of Terms of Service"
+				} else if errMsg == "" {
+					errMsg = "Account suspended due to Terms of Service violation (403 Forbidden)"
+				}
+				if activeEmail != "" {
+					_ = s.UpdateAccountStatus(activeEmail, "suspended", errMsg)
+				}
+				return &QuotaSummaryResponse{
+					Groups:    []QuotaGroup{},
+					Exhausted: true,
+					Error:     fmt.Sprintf("Akun %s ditangguhkan oleh Google (TOS Violation): %s", MaskEmail(activeEmail), errMsg),
+					Accounts:  s.getPoolItems(),
+				}, nil
+			}
+
+			if resp.StatusCode == http.StatusUnauthorized {
+				errMsg := "Session token expired or unauthenticated (401 Unauthorized)"
+				if activeEmail != "" {
+					_ = s.UpdateAccountStatus(activeEmail, "unauthenticated", errMsg)
+				}
+				return &QuotaSummaryResponse{
+					Groups:    []QuotaGroup{},
+					Exhausted: true,
+					Error:     fmt.Sprintf("Akun %s tidak terautentikasi (401 Unauthorized)", MaskEmail(activeEmail)),
+					Accounts:  s.getPoolItems(),
+				}, nil
+			}
+
+			if resp.StatusCode == http.StatusTooManyRequests {
+				errMsg := "Resource has been exhausted (429 Too Many Requests)"
+				if activeEmail != "" {
+					_ = s.UpdateAccountStatus(activeEmail, "quota_exhausted", errMsg)
+				}
+				return &QuotaSummaryResponse{
+					Groups:    []QuotaGroup{},
+					Exhausted: true,
+					Error:     fmt.Sprintf("Quota habis untuk akun %s (429 Too Many Requests)", MaskEmail(activeEmail)),
+					Accounts:  s.getPoolItems(),
+				}, nil
+			}
+
+			lastErr = fmt.Errorf("endpoint %s status %d: %s", endpoint, resp.StatusCode, bodyStr)
 		}
-		bodyBytes, _ := json.Marshal(bodyMap)
-
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
-		if err != nil {
-			lastErr = err
-			continue
+		if successResp != nil {
+			break
 		}
-
-		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", "antigravity/cli/1.2.3")
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err = client.Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		respBytes, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-
-		if resp.StatusCode == http.StatusForbidden {
-			lastErr = fmt.Errorf("status 403 forbidden: %s", string(respBytes))
-			continue
-		}
-
-		// Success or other status code (like 429) found, break loop
-		lastErr = nil
-		break
 	}
 
-	if lastErr != nil && resp == nil {
-		return nil, fmt.Errorf("failed to request quota summary: %w", lastErr)
-	}
-
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return &QuotaSummaryResponse{
-			Groups:    []QuotaGroup{},
-			Exhausted: true,
-			Error:     "Resource has been exhausted (e.g. check quota).",
-		}, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("api returned status %d: %s", resp.StatusCode, string(respBytes))
+	if successResp == nil {
+		if lastErr != nil {
+			return nil, fmt.Errorf("failed to request quota summary: %w", lastErr)
+		}
+		return nil, fmt.Errorf("failed to request quota summary")
 	}
 
 	type rawBucket struct {
@@ -878,13 +1173,14 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 	var quotaResp struct {
 		Groups []rawGroup `json:"groups"`
 	}
-	if err := json.Unmarshal(respBytes, &quotaResp); err != nil {
+	if err := json.Unmarshal(successBytes, &quotaResp); err != nil {
 		return nil, fmt.Errorf("failed to parse quota response: %w", err)
 	}
 
 	res := &QuotaSummaryResponse{
 		Groups:    []QuotaGroup{},
 		Exhausted: false,
+		Accounts:  s.getPoolItems(),
 	}
 	for _, g := range quotaResp.Groups {
 		for _, b := range g.Buckets {
@@ -902,11 +1198,90 @@ func (s *Service) GetQuotaSummary() (*QuotaSummaryResponse, error) {
 }
 
 type AccountEntry struct {
-	Email        string `json:"email"`
-	KeyringValue string `json:"keyringValue"`
+	Email        string    `json:"email"`
+	KeyringValue string    `json:"keyringValue"`
+	Status       string    `json:"status,omitempty"`       // "valid", "suspended", "quota_exhausted", "unauthenticated"
+	ErrorMsg     string    `json:"errorMsg,omitempty"`     // Google suspension or error details
+	LastChecked  time.Time `json:"lastChecked,omitempty"`  // Timestamp of last check
+}
+
+// decodeJWTEmail decodes a JWT string (e.g. id_token) and extracts the "email" claim from payload JSON.
+func decodeJWTEmail(jwtStr string) string {
+	jwtStr = strings.TrimSpace(jwtStr)
+	if jwtStr == "" {
+		return ""
+	}
+	parts := strings.Split(jwtStr, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	payloadSegment := parts[1]
+	switch len(payloadSegment) % 4 {
+	case 2:
+		payloadSegment += "=="
+	case 3:
+		payloadSegment += "="
+	}
+
+	var data []byte
+	var err error
+	data, err = base64.URLEncoding.DecodeString(payloadSegment)
+	if err != nil {
+		data, err = base64.StdEncoding.DecodeString(payloadSegment)
+		if err != nil {
+			data, err = base64.RawURLEncoding.DecodeString(parts[1])
+			if err != nil {
+				data, err = base64.RawStdEncoding.DecodeString(parts[1])
+				if err != nil {
+					return ""
+				}
+			}
+		}
+	}
+
+	var claims struct {
+		Email string `json:"email"`
+	}
+	if err := json.Unmarshal(data, &claims); err == nil && claims.Email != "" {
+		return claims.Email
+	}
+	return ""
+}
+
+// extractEmailFromTokenJSON parses token JSON structure and extracts email from id_token or access_token JWT payload.
+func extractEmailFromTokenJSON(tokenJSON string) string {
+	tokenJSON = strings.TrimSpace(tokenJSON)
+	if tokenJSON == "" {
+		return ""
+	}
+
+	var kt struct {
+		IDToken string `json:"id_token"`
+		Token   struct {
+			IDToken     string `json:"id_token"`
+			AccessToken string `json:"access_token"`
+		} `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(tokenJSON), &kt); err == nil {
+		if email := decodeJWTEmail(kt.Token.IDToken); email != "" {
+			return email
+		}
+		if email := decodeJWTEmail(kt.IDToken); email != "" {
+			return email
+		}
+		if email := decodeJWTEmail(kt.Token.AccessToken); email != "" {
+			return email
+		}
+	}
+
+	return decodeJWTEmail(tokenJSON)
 }
 
 func fetchEmailFromToken(accessToken string) (string, error) {
+	if email := decodeJWTEmail(accessToken); email != "" {
+		return email, nil
+	}
+
 	req, err := http.NewRequest("GET", "https://www.googleapis.com/oauth2/v2/userinfo", nil)
 	if err != nil {
 		return "", err
@@ -948,6 +1323,11 @@ func (s *Service) LoadAccountsPool() ([]AccountEntry, error) {
 	if err := json.Unmarshal(data, &pool); err != nil {
 		return nil, err
 	}
+	for i := range pool {
+		if pool[i].Status == "" {
+			pool[i].Status = "valid"
+		}
+	}
 	return pool, nil
 }
 
@@ -965,58 +1345,68 @@ func (s *Service) SyncCurrentAccountToPool() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// 1. Get current keyring value
-	val, err := keyring.Get("gemini", "antigravity")
-	if err != nil {
-		// Fallback: read from file directly in headless environment
+	// 1. Get current keyring value or fallback file
+	var val string
+	if HomeDirOverride == "" {
+		krVal, err := keyring.Get("gemini", "antigravity")
+		krVal = strings.TrimSpace(krVal)
+		if err == nil && krVal != "" && krVal != "keychain-authenticated-dummy-token" && strings.HasPrefix(krVal, "{") {
+			val = krVal
+		}
+	}
+	if val == "" {
 		homeDir, pathErr := getHomeDir()
 		if pathErr == nil {
 			tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 			if fileData, fileErr := os.ReadFile(tokenPath); fileErr == nil {
-				val = string(fileData)
+				c := strings.TrimSpace(string(fileData))
+				if c != "" && c != "keychain-authenticated-dummy-token" && strings.HasPrefix(c, "{") {
+					val = c
+				}
 			}
 		}
-		if val == "" || val == "keychain-authenticated-dummy-token" {
-			return nil // Not logged in yet
+	}
+
+	if val == "" || val == "keychain-authenticated-dummy-token" || !strings.HasPrefix(val, "{") {
+		return nil // Not logged in yet
+	}
+
+	// 2. Extract email: 1) JWT decode from id_token, 2) fetchEmailFromToken API, 3) log parsing
+	email := extractEmailFromTokenJSON(val)
+	if email == "" {
+		var kt struct {
+			Token struct {
+				AccessToken string `json:"access_token"`
+			} `json:"token"`
+		}
+		if json.Unmarshal([]byte(val), &kt) == nil && kt.Token.AccessToken != "" {
+			email, _ = fetchEmailFromToken(kt.Token.AccessToken)
 		}
 	}
-
-	// 2. Parse token
-	var kt struct {
-		Token struct {
-			AccessToken string `json:"access_token"`
-		} `json:"token"`
-	}
-	if err := json.Unmarshal([]byte(val), &kt); err != nil {
-		return err
-	}
-
-	if kt.Token.AccessToken == "" {
-		return nil
-	}
-
-	// 3. Get email
-	email, err := fetchEmailFromToken(kt.Token.AccessToken)
-	if err != nil {
-		// Fallback to log parsing
+	if email == "" {
 		email = s.GetAuthenticatedEmail()
 	}
-
 	if email == "" {
 		email = "Unknown Account"
 	}
 
-	// 4. Load pool
+	// 3. Load pool
 	pool, err := s.LoadAccountsPool()
 	if err != nil {
 		pool = []AccountEntry{}
 	}
 
-	// 5. Update or add
+	// 4. Update or add
 	found := false
 	for i, entry := range pool {
-		if entry.Email == email {
+		if entry.Email == email || (email != "Unknown Account" && entry.Email == "Unknown Account" && entry.KeyringValue == val) || entry.KeyringValue == val {
+			if email != "Unknown Account" || pool[i].Email == "" {
+				pool[i].Email = email
+			}
 			pool[i].KeyringValue = val
+			if pool[i].Status == "" {
+				pool[i].Status = "valid"
+			}
 			found = true
 			break
 		}
@@ -1025,6 +1415,8 @@ func (s *Service) SyncCurrentAccountToPool() error {
 		pool = append(pool, AccountEntry{
 			Email:        email,
 			KeyringValue: val,
+			Status:       "valid",
+			LastChecked:  time.Now(),
 		})
 	}
 

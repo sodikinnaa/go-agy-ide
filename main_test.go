@@ -13,6 +13,7 @@ import (
 	"mobile-agy/internal/auth"
 	"mobile-agy/internal/chat"
 	"mobile-agy/internal/handler"
+	"mobile-agy/internal/telegram"
 	"mobile-agy/internal/terminal"
 	"mobile-agy/internal/workspace"
 
@@ -34,8 +35,9 @@ func setupTestFixture(t *testing.T) (*workspace.Service, *auth.Service, *chat.Se
 
 	chatSvc := chat.NewService()
 	terminalSvc := terminal.NewService()
+	telegramSvc := telegram.NewService(chatSvc, workspaceSvc)
 
-	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, handler.EmbeddedHTML{
+	h := handler.NewHandler(workspaceSvc, authSvc, chatSvc, terminalSvc, telegramSvc, handler.EmbeddedHTML{
 		IndexHTML:    "<html>index</html>",
 		LoginHTML:    "<html>login</html>",
 		LoginPwdHTML: "<html>login pwd</html>",
@@ -742,6 +744,15 @@ func TestAccountPoolAPI(t *testing.T) {
 	accountsSlice, ok := accountsVal.([]any)
 	if !ok || len(accountsSlice) < 2 {
 		t.Errorf("expected accounts slice of length at least 2, got: %v", accountsVal)
+	}
+
+	detailsVal, ok := getResp["details"]
+	if !ok {
+		t.Errorf("expected 'details' in pool response")
+	}
+	detailsSlice, ok := detailsVal.([]any)
+	if !ok || len(detailsSlice) < 2 {
+		t.Errorf("expected details slice of length at least 2, got: %v", detailsVal)
 	}
 
 	// 2. Test POST /api/auth/pool/switch

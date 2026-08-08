@@ -131,6 +131,8 @@ func main() {
 	http.HandleFunc("/api/auth/status", h.AuthMiddleware(h.HandleAuthStatus))
 	http.HandleFunc("/api/auth/pwd", h.AuthMiddleware(h.HandlePasswordAuth))
 	http.HandleFunc("/api/auth/pwd/update", h.AuthMiddleware(h.HandlePasswordUpdate))
+	http.HandleFunc("/api/auth/wrapper-key", h.AuthMiddleware(h.HandleGetWrapperAPIKey))
+	http.HandleFunc("/api/auth/wrapper-key/regenerate", h.AuthMiddleware(h.HandleRegenerateWrapperAPIKey))
 	http.HandleFunc("/api/auth/pool", h.AuthMiddleware(h.HandleGetAccountsPool))
 	http.HandleFunc("/api/auth/pool/switch", h.AuthMiddleware(h.HandleSwitchAccount))
 	http.HandleFunc("/api/auth/pool/delete", h.AuthMiddleware(h.HandleDeleteAccount))
@@ -149,6 +151,7 @@ func main() {
 	http.HandleFunc("/api/run", h.AuthMiddleware(h.HandleRunCommandStream))
 	http.HandleFunc("/api/terminal/stream", h.AuthMiddleware(h.HandleTerminalStream))
 	http.HandleFunc("/api/terminal/input", h.AuthMiddleware(h.HandleTerminalInput))
+	http.HandleFunc("/api/terminal/resize", h.AuthMiddleware(h.HandleTerminalResize))
 	http.HandleFunc("/api/ports", h.AuthMiddleware(h.HandlePorts))
 	http.HandleFunc("/api/workspaces", h.AuthMiddleware(h.HandleWorkspacesGet))
 	http.HandleFunc("/api/workspaces/select", h.AuthMiddleware(h.HandleWorkspaceSelect))
@@ -158,11 +161,14 @@ func main() {
 	http.HandleFunc("/api/openai/models", h.AuthMiddleware(h.HandleOpenAIModels))
 	http.HandleFunc("/preview/", h.AuthMiddleware(h.HandlePreviewFile))
 	http.HandleFunc("/api/webhook", h.HandleGithubWebhook)
-	http.HandleFunc("/api/browser/proxy", h.AuthMiddleware(h.HandleBrowserProxy))
 	http.HandleFunc("/api/update", h.AuthMiddleware(h.HandleSelfUpdate))
 	http.HandleFunc("/api/github/releases", h.AuthMiddleware(h.HandleGithubReleases))
 	http.HandleFunc("/api/telegram/config", h.AuthMiddleware(h.HandleTelegramConfigGet))
 	http.HandleFunc("/api/telegram/config/save", h.AuthMiddleware(h.HandleTelegramConfigSave))
+
+	// OpenAI Compatible API Wrapper Endpoints
+	http.HandleFunc("/v1/models", h.AuthMiddleware(h.HandleV1Models))
+	http.HandleFunc("/v1/chat/completions", h.AuthMiddleware(h.HandleV1ChatCompletions))
 
 	listener, listenErr := net.Listen("tcp", "0.0.0.0:"+port)
 	if listenErr != nil {

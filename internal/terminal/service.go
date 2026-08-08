@@ -11,17 +11,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/creack/pty"
 )
+
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[a-zA-Z0-9]`)
+
+func stripANSI(str string) string {
+	return ansiRegex.ReplaceAllString(str, "")
+}
 
 type Service struct {
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	stdout    io.ReadCloser
+	ptyFile   *os.File
 	isRunning bool
 	mutex     sync.Mutex
 	clients   map[chan []byte]bool
@@ -44,6 +54,91 @@ func NewService() *Service {
 	}
 }
 
+// buildTerminalEnv constructs a full environment with optimal TUI / CLI terminal variables
+func buildTerminalEnv() []string {
+	envMap := map[string]string{
+		"TERM":        "xterm-256color",
+		"COLORTERM":   "truecolor",
+		"LANG":        "C.UTF-8",
+		"LC_ALL":      "C.UTF-8",
+		"PAGER":       "cat",
+		"FORCE_COLOR": "true",
+		"CLICOLOR":    "1",
+	}
+
+	// Ensure PATH includes common user and system binary directories
+	currentPath := os.Getenv("PATH")
+	homeDir, _ := os.UserHomeDir()
+	extraPaths := []string{
+		filepath.Join(homeDir, "go", "bin"),
+		filepath.Join(homeDir, ".local", "bin"),
+		"/usr/local/sbin",
+		"/usr/local/bin",
+		"/usr/sbin",
+		"/usr/bin",
+		"/sbin",
+		"/bin",
+	}
+
+	pathParts := strings.Split(currentPath, string(os.PathListSeparator))
+	for _, p := range extraPaths {
+		if p == "" {
+			continue
+		}
+		found := false
+		for _, existing := range pathParts {
+			if existing == p {
+				found = true
+				break
+			}
+		}
+		if !found {
+			pathParts = append(pathParts, p)
+		}
+	}
+	envMap["PATH"] = strings.Join(pathParts, string(os.PathListSeparator))
+
+	if os.Getenv("SHELL") != "" {
+		envMap["SHELL"] = os.Getenv("SHELL")
+	} else if bashPath, err := exec.LookPath("bash"); err == nil {
+		envMap["SHELL"] = bashPath
+	} else {
+		envMap["SHELL"] = "/bin/bash"
+	}
+
+	res := os.Environ()
+	for k, v := range envMap {
+		prefix := k + "="
+		updated := false
+		for i, e := range res {
+			if strings.HasPrefix(e, prefix) {
+				res[i] = k + "=" + v
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			res = append(res, k+"="+v)
+		}
+	}
+	return res
+}
+
+func getShellPath() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		if _, err := exec.LookPath(shell); err == nil {
+			return shell
+		}
+	}
+	if bashPath, err := exec.LookPath("bash"); err == nil {
+		return bashPath
+	}
+	if shPath, err := exec.LookPath("sh"); err == nil {
+		return shPath
+	}
+	return "/bin/bash"
+}
+
 func (s *Service) StartSession(workspaceDir string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -52,45 +147,43 @@ func (s *Service) StartSession(workspaceDir string) error {
 		return nil
 	}
 
+	env := buildTerminalEnv()
+
 	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		if _, err := exec.LookPath("bash"); err == nil {
-			cmd = exec.Command("bash", "-i")
-		} else if _, err := exec.LookPath("powershell"); err == nil {
-			cmd = exec.Command("powershell")
+	var stdin io.WriteCloser
+	var stdout io.ReadCloser
+	var ptmx *os.File
+	var err error
+
+	if runtime.GOOS != "windows" {
+		shell := getShellPath()
+		cmd = exec.Command(shell, "-i")
+		cmd.Dir = workspaceDir
+		cmd.Env = env
+
+		// Allocate real PTY master/slave pair using creack/pty
+		ptmx, err = pty.Start(cmd)
+		if err == nil {
+			// Set standard initial terminal window size (35 rows x 120 cols)
+			_ = pty.Setsize(ptmx, &pty.Winsize{
+				Rows: 35,
+				Cols: 120,
+			})
+			stdin = ptmx
+			stdout = ptmx
+			s.ptyFile = ptmx
 		} else {
-			cmd = exec.Command("cmd")
+			// Fallback if PTY allocation fails (e.g., restricted containers)
+			cmd, stdin, stdout, err = startFallbackUnixSession(workspaceDir, env)
+			if err != nil {
+				return err
+			}
 		}
 	} else {
-		// Use 'script' utility to allocate a real pseudo-terminal (PTY) on Unix/Linux systems.
-		// This enables full job control and resolves "cannot set terminal process group" & "Inappropriate ioctl for device" errors.
-		if _, err := exec.LookPath("script"); err == nil {
-			cmd = exec.Command("script", "-q", "-f", "-c", "bash -i", "/dev/null")
-		} else {
-			cmd = exec.Command("bash", "-i")
+		cmd, stdin, stdout, err = startWindowsSession(workspaceDir, env)
+		if err != nil {
+			return err
 		}
-	}
-
-	cmd.Dir = workspaceDir
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		stdin.Close()
-		return err
-	}
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
-		stdin.Close()
-		stdout.Close()
-		return err
 	}
 
 	s.cmd = cmd
@@ -98,32 +191,103 @@ func (s *Service) StartSession(workspaceDir string) error {
 	s.stdout = stdout
 	s.isRunning = true
 
-	// Read loop
+	// Dedicated background read loop for handling escape sequences and PTY stream
 	go func() {
-		buf := make([]byte, 1024)
+		buf := make([]byte, 4096)
 		for {
-			n, err := stdout.Read(buf)
+			n, readErr := stdout.Read(buf)
 			if n > 0 {
 				data := make([]byte, n)
 				copy(data, buf[:n])
 				s.Broadcast(data)
 			}
-			if err != nil {
+			if readErr != nil {
 				break
 			}
 		}
+
 		s.mutex.Lock()
 		s.isRunning = false
-		if s.stdin != nil {
+		if s.ptyFile != nil {
+			_ = s.ptyFile.Close()
+			s.ptyFile = nil
+		}
+		if s.stdin != nil && s.stdin != s.ptyFile {
 			_ = s.stdin.Close()
 		}
-		if s.stdout != nil {
+		if s.stdout != nil && s.stdout != s.ptyFile {
 			_ = s.stdout.Close()
 		}
 		s.mutex.Unlock()
 	}()
 
 	return nil
+}
+
+func startFallbackUnixSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("script"); err == nil {
+		cmd = exec.Command("script", "-q", "-f", "-c", "bash -i", "/dev/null")
+	} else {
+		cmd = exec.Command("bash", "-i")
+	}
+
+	cmd.Dir = workspaceDir
+	cmd.Env = env
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, nil, nil, err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		return nil, nil, nil, err
+	}
+
+	return cmd, stdin, stdout, nil
+}
+
+func startWindowsSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("bash"); err == nil {
+		cmd = exec.Command("bash", "-i")
+	} else if _, err := exec.LookPath("powershell"); err == nil {
+		cmd = exec.Command("powershell")
+	} else {
+		cmd = exec.Command("cmd")
+	}
+
+	cmd.Dir = workspaceDir
+	cmd.Env = env
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, nil, nil, err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		return nil, nil, nil, err
+	}
+
+	return cmd, stdin, stdout, nil
 }
 
 func (s *Service) WriteInput(data string) error {
@@ -144,7 +308,7 @@ func (s *Service) RegisterClient(ch chan []byte) {
 		s.clients = make(map[chan []byte]bool)
 	}
 	s.clients[ch] = true
-	
+
 	// Send history to new client
 	if len(s.history) > 0 {
 		histCopy := make([]byte, len(s.history))
@@ -168,12 +332,23 @@ func (s *Service) UnregisterClient(ch chan []byte) {
 func (s *Service) Broadcast(data []byte) {
 	s.clientMux.Lock()
 	defer s.clientMux.Unlock()
-	
+
 	s.history = append(s.history, data...)
-	if len(s.history) > 20000 {
-		s.history = s.history[len(s.history)-20000:]
+
+	// Maintain clean buffer history up to 65KB
+	maxHistory := 65536
+	if len(s.history) > maxHistory {
+		s.history = s.history[len(s.history)-maxHistory:]
+		// Ensure history doesn't truncate in middle of line/sequence if possible
+		checkLen := 1024
+		if len(s.history) < checkLen {
+			checkLen = len(s.history)
+		}
+		if idx := strings.IndexByte(string(s.history[:checkLen]), '\n'); idx >= 0 && idx < len(s.history)-1 {
+			s.history = s.history[idx+1:]
+		}
 	}
-	
+
 	for ch := range s.clients {
 		select {
 		case ch <- data:
@@ -189,9 +364,32 @@ func (s *Service) KillSession() {
 	if s.isRunning && s.cmd != nil && s.cmd.Process != nil {
 		_ = s.cmd.Process.Kill()
 	}
+	if s.ptyFile != nil {
+		_ = s.ptyFile.Close()
+		s.ptyFile = nil
+	}
+	s.isRunning = false
 }
 
-// StartCommand executes a bash command and returns its stdout/stderr reader
+// ResizeSession updates the winsize of the active PTY
+func (s *Service) ResizeSession(cols, rows int) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	if cols <= 0 || rows <= 0 {
+		return nil
+	}
+
+	if s.ptyFile != nil {
+		return pty.Setsize(s.ptyFile, &pty.Winsize{
+			Rows: uint16(rows),
+			Cols: uint16(cols),
+		})
+	}
+	return nil
+}
+
+// StartCommand executes a command and returns its stdout/stderr reader
 func (s *Service) StartCommand(ctx context.Context, command string, activeWorkspaceDir string) (*exec.Cmd, io.ReadCloser, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -207,7 +405,7 @@ func (s *Service) StartCommand(ctx context.Context, command string, activeWorksp
 	}
 
 	cmd.Dir = activeWorkspaceDir
-	cmd.Env = os.Environ()
+	cmd.Env = buildTerminalEnv()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -397,12 +595,19 @@ func (s *Service) FetchOpenAIModels(apiKey, apiBase string) ([]string, error) {
 	return models, nil
 }
 
+func getHomeDir() (string, error) {
+	if auth.HomeDirOverride != "" {
+		return auth.HomeDirOverride, nil
+	}
+	return os.UserHomeDir()
+}
+
 // GetModelsList fetches available models from agy CLI or falls back to defaults
 func (s *Service) GetModelsList() ([]string, error) {
 	var models []string
 
 	hasToken := false
-	homeDir, errToken := os.UserHomeDir()
+	homeDir, errToken := getHomeDir()
 	if errToken == nil {
 		tokenPath := filepath.Join(homeDir, ".gemini", "antigravity-cli", "antigravity-oauth-token")
 		if _, errStat := os.Stat(tokenPath); errStat == nil {
@@ -422,34 +627,53 @@ func (s *Service) GetModelsList() ([]string, error) {
 
 		if useDirect {
 			cmdDirect := exec.Command(agyPath, "models")
-			cmdDirect.Env = os.Environ()
+			cmdDirect.Env = buildTerminalEnv()
 			outputBytes, err = cmdDirect.Output()
 		} else {
 			cmdStr := fmt.Sprintf("%s models", agyPath)
 			cmd := exec.Command("script", "-q", "-f", "-c", cmdStr, "/dev/null")
-			cmd.Env = os.Environ()
+			cmd.Env = buildTerminalEnv()
 			outputBytes, err = cmd.Output()
 
 			if err != nil {
 				cmdDirect := exec.Command(agyPath, "models")
-				cmdDirect.Env = os.Environ()
+				cmdDirect.Env = buildTerminalEnv()
 				outputBytes, err = cmdDirect.Output()
 			}
 		}
 
 		if err == nil {
-			lines := strings.Split(string(outputBytes), "\n")
+			rawStr := stripANSI(string(outputBytes))
+			rawStr = strings.ReplaceAll(rawStr, "\r", "\n")
+			lines := strings.Split(rawStr, "\n")
 			for _, line := range lines {
 				trimmed := strings.TrimSpace(line)
-				if trimmed == "" {
+				if trimmed == "" || strings.Contains(trimmed, "Fetching") {
 					continue
 				}
-				if strings.Contains(trimmed, "Fetching") || strings.Contains(trimmed, "⠋") || strings.Contains(trimmed, "⠙") || strings.Contains(trimmed, "⠹") || strings.Contains(trimmed, "⠸") || strings.Contains(trimmed, "⠼") || strings.Contains(trimmed, "⠴") || strings.Contains(trimmed, "⠦") || strings.Contains(trimmed, "⠧") || strings.Contains(trimmed, "⠇") || strings.Contains(trimmed, "⠏") {
+				trimmed = strings.Map(func(r rune) rune {
+					if strings.ContainsRune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", r) || r < 32 || r == 127 {
+						return -1
+					}
+					return r
+				}, trimmed)
+				trimmed = strings.TrimSpace(trimmed)
+				if trimmed == "" {
 					continue
 				}
 				fields := strings.Fields(trimmed)
 				if len(fields) > 0 {
-					models = append(models, fields[0])
+					cleanModel := stripANSI(fields[0])
+					cleanModel = strings.TrimSpace(cleanModel)
+					if cleanModel != "" &&
+						!strings.Contains(cleanModel, "Fetching") &&
+						!strings.Contains(cleanModel, "Error") &&
+						!strings.Contains(cleanModel, "Usage") &&
+						!strings.Contains(cleanModel, "Authentication") &&
+						!strings.Contains(cleanModel, "invalid") &&
+						!strings.Contains(cleanModel, "Waiting") {
+						models = append(models, cleanModel)
+					}
 				}
 			}
 		}
@@ -457,6 +681,9 @@ func (s *Service) GetModelsList() ([]string, error) {
 
 	if len(models) == 0 {
 		models = []string{
+			"gemini-3.6-flash-high",
+			"gemini-3.6-flash-medium",
+			"gemini-3.6-flash-low",
 			"gemini-3.5-flash-high",
 			"gemini-3.5-flash-medium",
 			"gemini-3.5-flash-low",

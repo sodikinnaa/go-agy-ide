@@ -198,19 +198,6 @@
             }
         }
 
-        /* Top Browser Progress Loading Bar */
-        #browser-loading-bar {
-            height: 2.5px;
-            background: linear-gradient(90deg, #a855f7, #10b981, #3b82f6);
-            background-size: 200% 100%;
-            animation: shimmerLoading 1.2s infinite linear;
-            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-out;
-        }
-
-        @keyframes shimmerLoading {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
         body {
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: #090a15;
@@ -387,7 +374,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.6.8</span>
+                    <span class="text-[10px] text-slate-400">v1.6.9</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -408,10 +395,7 @@
             <button onclick="saveActiveFile()" class="p-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg transition duration-200 flex items-center justify-center" title="Save File">
                 <i data-lucide="save" class="w-4 h-4"></i>
             </button>
-            <button id="topbar-btn-browser" onclick="toggleLiveBrowserPanel()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-accent/20 text-brand-accent rounded-lg transition duration-200 flex items-center space-x-1.5" title="Live Browser Preview (Ctrl+Shift+B)">
-                <i data-lucide="globe" class="w-4 h-4 text-brand-accent"></i>
-                <span class="hidden sm:inline text-xs font-semibold text-slate-200">Browser</span>
-            </button>
+
             <button onclick="openQuotaModal()" class="p-1.5 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg transition duration-200" title="Quota & Account Info">
                 <i data-lucide="user" class="w-4 h-4"></i>
             </button>
@@ -468,184 +452,84 @@
             </div>
         </section>
 
-        <!-- Middle Pane: Code Editor + Live Browser (Top) and Terminal (Bottom) -->
+        <!-- Middle Pane: Code Editor (Top) and Terminal (Bottom) -->
         <div id="panel-middle" class="flex-1 flex flex-col overflow-hidden relative">
         <div id="panel-center" class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
             <section id="panel-code" class="flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-10 md:flex">
-            <!-- Editor Header Bar -->
-            <div id="editor-header-bar" class="hidden flex items-center justify-between bg-brand-dark border-b border-brand-border shrink-0 text-xs select-none">
-                <div id="editor-tabs" class="flex-1 flex overflow-x-auto scrollbar-hide">
-                    <!-- Dynamic Tabs -->
-                </div>
-                <div id="editor-mode-switcher" class="hidden flex bg-brand-panel p-0.5 rounded-lg border border-brand-border m-1.5 shrink-0">
-                    <button id="editor-btn-edit" onclick="setMarkdownMode('edit')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
-                        <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
-                        <span>Edit</span>
-                    </button>
-                    <button id="editor-btn-preview" onclick="setMarkdownMode('preview')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
-                        <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
-                        <span>Preview</span>
-                    </button>
-                </div>
-            </div>
-            <!-- Mobile Keyboard Helper (above CM) -->
-            <div id="keyboard-helper" class="flex overflow-x-auto whitespace-nowrap bg-brand-dark p-1 border-b border-brand-border gap-1 scrollbar-hide md:hidden shrink-0">
-                <button onclick="insertCode('    ')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">Tab</button>
-                <button onclick="insertCode('{')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">{</button>
-                <button onclick="insertCode('}')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">}</button>
-                <button onclick="insertCode('[')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">[</button>
-                <button onclick="insertCode(']')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">]</button>
-                <button onclick="insertCode('(')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">(</button>
-                <button onclick="insertCode(')')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">)</button>
-                <button onclick="insertCode(';')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">;</button>
-                <button onclick="insertCode('=')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">=</button>
-                <button onclick="insertCode(':')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">:</button>
-                <button onclick="insertCode(',')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">,</button>
-                <button onclick="insertCode('.')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">.</button>
-                <button onclick="insertCode('&quot;')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">"</button>
-                <button onclick="insertCode('\'')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">'</button>
-                <button onclick="insertCode('/')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">/</button>
-                <button onclick="insertCode('|')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">|</button>
-                <button onclick="insertCode('&amp;&amp;')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">&amp;&amp;</button>
-            </div>
-            <!-- Editor Target -->
-            <div class="flex-1 relative overflow-hidden flex flex-col">
-                <textarea id="editor-textarea" class="hidden"></textarea>
-                <!-- Image Preview Container -->
-                <div id="image-preview-container" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-brand-dark/40 overflow-auto p-4 z-20">
-                    <img id="image-preview" class="max-w-full max-h-[85%] object-contain rounded border border-brand-border bg-slate-900/50 shadow-lg" alt="Preview" />
-                    <div class="mt-3 text-xs text-slate-400 font-mono bg-brand-panel border border-brand-border px-3 py-1.5 rounded-full flex items-center space-x-2">
-                        <span id="image-preview-info">0x0 px</span>
-                        <span class="text-slate-600">|</span>
-                        <a id="image-preview-download" href="#" target="_blank" class="text-brand-accent hover:underline flex items-center space-x-1">
-                            <i data-lucide="download" class="w-3.5 h-3.5 inline"></i><span>Download</span>
-                        </a>
+                <!-- Editor Header Bar -->
+                <div id="editor-header-bar" class="hidden flex items-center justify-between bg-brand-dark border-b border-brand-border shrink-0 text-xs select-none">
+                    <div id="editor-tabs" class="flex-1 flex overflow-x-auto scrollbar-hide">
+                        <!-- Dynamic Tabs -->
+                    </div>
+                    <div id="editor-mode-switcher" class="hidden flex bg-brand-panel p-0.5 rounded-lg border border-brand-border m-1.5 shrink-0">
+                        <button id="editor-btn-edit" onclick="setMarkdownMode('edit')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
+                            <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                            <span>Edit</span>
+                        </button>
+                        <button id="editor-btn-preview" onclick="setMarkdownMode('preview')" class="px-3 py-1 rounded-md text-xs font-semibold flex items-center space-x-1.5 transition duration-200">
+                            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+                            <span>Preview</span>
+                        </button>
                     </div>
                 </div>
-                <!-- Markdown Preview Container -->
-                <div id="markdown-preview-container" class="hidden absolute inset-0 bg-brand-panel overflow-y-auto p-6 z-20">
-                    <div id="markdown-preview-content" class="markdown-body"></div>
+                <!-- Mobile Keyboard Helper (above CM) -->
+                <div id="keyboard-helper" class="flex overflow-x-auto whitespace-nowrap bg-brand-dark p-1 border-b border-brand-border gap-1 scrollbar-hide md:hidden shrink-0">
+                    <button onclick="insertCode('    ')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">Tab</button>
+                    <button onclick="insertCode('{')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">{</button>
+                    <button onclick="insertCode('}')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">}</button>
+                    <button onclick="insertCode('[')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">[</button>
+                    <button onclick="insertCode(']')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">]</button>
+                    <button onclick="insertCode('(')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">(</button>
+                    <button onclick="insertCode(')')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">)</button>
+                    <button onclick="insertCode(';')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">;</button>
+                    <button onclick="insertCode('=')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">=</button>
+                    <button onclick="insertCode(':')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">:</button>
+                    <button onclick="insertCode(',')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">,</button>
+                    <button onclick="insertCode('.')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">.</button>
+                    <button onclick="insertCode('&quot;')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">"</button>
+                    <button onclick="insertCode('\'')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">'</button>
+                    <button onclick="insertCode('/')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">/</button>
+                    <button onclick="insertCode('|')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">|</button>
+                    <button onclick="insertCode('&amp;&amp;')" class="px-3 py-1 bg-brand-panel border border-brand-border hover:bg-brand-border rounded text-xs text-slate-300 font-mono">&amp;&amp;</button>
                 </div>
-            </div>
-        </section>
-
-        <!-- Live Browser Preview Panel (Always Open Side-by-Side) -->
-        <section id="panel-browser" class="flex-1 flex flex-col bg-brand-panel border-l border-brand-border overflow-hidden transition-all duration-300 z-15 relative">
-            <!-- Browser Address Bar & Toolbar -->
-            <div class="flex items-center justify-between bg-brand-dark px-3 py-1.5 border-b border-brand-border shrink-0 select-none space-x-2">
-                <div class="flex items-center space-x-1 shrink-0">
-                    <button onclick="navigateBrowserBack()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Mundur (Back)">
-                        <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <button onclick="navigateBrowserForward()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Maju (Forward)">
-                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <button onclick="refreshLiveBrowser()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Refresh Live (Ctrl+R)">
-                        <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
-                
-                <!-- URL Address Bar -->
-                <div class="flex-1 flex items-center bg-brand-panel border border-brand-border rounded-lg px-2 py-1 max-w-xl">
-                    <i data-lucide="globe" class="w-3.5 h-3.5 text-brand-accent mr-1.5 shrink-0"></i>
-                    <input type="text" id="browser-url-input" onkeydown="if(event.key==='Enter') loadBrowserUrl(this.value)" value="" class="w-full bg-transparent border-0 text-xs text-slate-200 focus:outline-none font-mono" placeholder="Load URL..." />
-                    <button onclick="loadBrowserUrl(document.getElementById('browser-url-input').value)" class="ml-1 text-slate-400 hover:text-white">
-                        <i data-lucide="corner-down-left" class="w-3 h-3"></i>
-                    </button>
-                </div>
-
-                <!-- Viewport Preset & Tools -->
-                <div class="flex items-center space-x-1 shrink-0">
-                    <!-- CSP Proxy Toggle -->
-                    <button id="browser-proxy-btn" onclick="toggleBrowserProxyMode()" class="px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Bypass CSP & X-Frame-Options (Proxy Mode)">
-                        <i data-lucide="shield" class="w-3 h-3 text-brand-accent"></i>
-                        <span class="hidden xl:inline">Proxy</span>
-                    </button>
-                    <!-- DevTools Drawer Toggle -->
-                    <button id="browser-devtools-btn" onclick="toggleBrowserDevTools()" class="px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Buka DevTools Console & Inspector">
-                        <i data-lucide="terminal" class="w-3 h-3 text-emerald-400"></i>
-                        <span class="hidden xl:inline">DevTools</span>
-                        <span id="browser-console-badge" class="hidden px-1 py-0.2 bg-red-500/80 text-white text-[9px] rounded-full font-bold">0</span>
-                    </button>
-                    <!-- Auto Reload Toggle -->
-                    <button id="browser-auto-reload-btn" onclick="toggleBrowserAutoReload()" class="px-2 py-1 bg-brand-accent/20 border border-brand-accent/40 text-brand-accent rounded text-[11px] font-semibold flex items-center space-x-1 transition" title="Auto Reload pas simpan file">
-                        <i data-lucide="zap" class="w-3 h-3"></i>
-                        <span class="hidden lg:inline">Auto Reload</span>
-                    </button>
-                    <!-- Device Width Switcher -->
-                    <div class="hidden sm:flex bg-brand-panel p-0.5 rounded border border-brand-border space-x-0.5">
-                        <button onclick="setBrowserWidth('375px')" class="p-1 text-slate-400 hover:text-white rounded" title="Mobile View (375px)">
-                            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
-                        </button>
-                        <button onclick="setBrowserWidth('768px')" class="p-1 text-slate-400 hover:text-white rounded" title="Tablet View (768px)">
-                            <i data-lucide="tablet" class="w-3.5 h-3.5"></i>
-                        </button>
-                        <button onclick="setBrowserWidth('100%')" class="p-1 text-slate-400 hover:text-white rounded" title="Full Width (100%)">
-                            <i data-lucide="monitor" class="w-3.5 h-3.5"></i>
-                        </button>
-                    </div>
-                    <!-- Fullscreen Toggle -->
-                    <button id="browser-fullscreen-btn" onclick="toggleBrowserFullscreen()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Layar Kebak / Full Screen Browser (Alt+F)">
-                        <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <!-- Open in External Tab -->
-                    <button onclick="openBrowserExternal()" class="p-1.5 text-slate-400 hover:text-white hover:bg-brand-panel rounded transition" title="Buka ing Tab Anyar">
-                        <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <!-- Close Browser Panel -->
-                    <button onclick="toggleLiveBrowserPanel()" class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-brand-panel rounded transition" title="Tutup Browser">
-                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Top Browser Progress Loading Bar -->
-            <div id="browser-loading-bar" class="w-0 opacity-0 transition-all duration-300 flex-none"></div>
-
-            <!-- Iframe Container & Viewport -->
-            <div class="flex-1 bg-slate-950 flex flex-col justify-center items-center overflow-hidden relative">
-                <div id="browser-viewport-wrapper" class="w-full h-full transition-all duration-300 flex justify-center items-center relative flex-1">
-                    <iframe id="live-browser-iframe" onload="syncBrowserUrlOnLoad(this)" src="about:blank" class="w-full h-full border-0 bg-white shadow-2xl transition-all duration-300"></iframe>
-                </div>
-
-                <!-- DevTools Console Drawer -->
-                <div id="browser-devtools-drawer" class="hidden w-full h-44 bg-slate-950 border-t border-brand-border flex flex-col shrink-0 text-xs font-mono select-text transition-all duration-300">
-                    <div class="px-3 py-1.5 bg-brand-dark border-b border-brand-border flex items-center justify-between shrink-0 select-none">
-                        <div class="flex items-center space-x-2">
-                            <span class="font-semibold text-slate-300 flex items-center space-x-1">
-                                <i data-lucide="terminal" class="w-3.5 h-3.5 text-emerald-400 inline"></i>
-                                <span>DevTools Console</span>
-                            </span>
-                            <span id="browser-devtools-status" class="text-[10px] text-slate-500">Live inspection active</span>
-                        </div>
-                        <div class="flex items-center space-x-1">
-                            <button onclick="clearBrowserConsole()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Clear Console">
-                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                            </button>
-                            <button onclick="toggleBrowserDevTools()" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Close DevTools">
-                                <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                            </button>
+                <!-- Editor Target -->
+                <div class="flex-1 relative overflow-hidden flex flex-col">
+                    <textarea id="editor-textarea" class="hidden"></textarea>
+                    <!-- Image Preview Container -->
+                    <div id="image-preview-container" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-brand-dark/40 overflow-auto p-4 z-20">
+                        <img id="image-preview" class="max-w-full max-h-[85%] object-contain rounded border border-brand-border bg-slate-900/50 shadow-lg" alt="Preview" />
+                        <div class="mt-3 text-xs text-slate-400 font-mono bg-brand-panel border border-brand-border px-3 py-1.5 rounded-full flex items-center space-x-2">
+                            <span id="image-preview-info">0x0 px</span>
+                            <span class="text-slate-600">|</span>
+                            <a id="image-preview-download" href="#" target="_blank" class="text-brand-accent hover:underline flex items-center space-x-1">
+                                <i data-lucide="download" class="w-3.5 h-3.5 inline"></i><span>Download</span>
+                            </a>
                         </div>
                     </div>
-                    <!-- Console Logs Container -->
-                    <div id="browser-console-logs" class="flex-1 overflow-y-auto p-2 space-y-1 bg-black/90 font-mono text-[11px] leading-relaxed select-text">
-                        <div class="text-slate-500 italic text-[10px] py-1">[DevTools] Live browser console stream initialized.</div>
+                    <!-- Markdown Preview Container -->
+                    <div id="markdown-preview-container" class="hidden absolute inset-0 bg-brand-panel overflow-y-auto p-6 z-20">
+                        <div id="markdown-preview-content" class="markdown-body"></div>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
         </div><!-- /#panel-center -->
 
         <!-- Bottom Panel Container (Terminal + Ports) -->
-        <div id="panel-bottom" class="w-full h-48 md:h-56 bg-brand-dark/95 border-t border-brand-border flex flex-col md:flex-row shrink-0 transition-all duration-300 relative z-10">
+        <div id="panel-bottom" class="w-full h-56 md:h-64 bg-brand-dark/95 border-t border-brand-border flex flex-col md:flex-row shrink-0 transition-all duration-300 relative z-10">
             <!-- Terminal Resize Handle -->
             <div id="terminal-resize-handle" class="absolute top-0 inset-x-0 h-1 bg-brand-border hover:bg-brand-accent cursor-row-resize z-40 transition-colors select-none"></div>
             
             <!-- Terminal Panel -->
             <section id="panel-terminal" class="flex-1 flex flex-col overflow-hidden relative border-r border-brand-border pt-1">
-            <div class="p-3 border-b border-brand-border flex items-center justify-between shrink-0" id="terminal-header">
-                <span class="text-xs font-semibold text-slate-400 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
+            <div class="px-3 py-2 border-b border-brand-border flex items-center justify-between shrink-0 bg-brand-dark/80" id="terminal-header">
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="terminal" class="w-4 h-4 text-brand-accent"></i>
+                    <span class="text-xs font-bold text-slate-300 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
+                </div>
                 <div class="flex items-center space-x-1" id="terminal-actions">
+                    <button onclick="toggleMaximizeTerminal()" id="btn-maximize-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Layar Kebak Terminal (Maximize)">
+                        <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                    </button>
                     <button onclick="toggleMinimizePorts()" id="btn-toggle-ports" class="p-1 hover:bg-brand-panel text-brand-accent hover:text-white rounded transition" title="Toggle Active Ports">
                         <i data-lucide="network" class="w-4 h-4"></i>
                     </button>
@@ -658,24 +542,27 @@
                 </div>
             </div>
             <!-- Terminal Output -->
-            <div id="terminal-container" class="flex-1 overflow-hidden p-2 bg-black"></div>
+            <div id="terminal-container" class="flex-1 overflow-hidden p-2 bg-black/90 font-mono"></div>
             
-            <!-- Terminal Helper Buttons (Mobile-friendly shortcuts) -->
-            <div id="terminal-shortcuts" class="px-2 py-1 bg-brand-panel/40 flex items-center justify-between overflow-x-auto shrink-0 select-none space-x-1 border-t border-brand-border">
-                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+C</button>
-                <button onclick="sendTerminalKey('Tab')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Tab</button>
-                <button onclick="sendTerminalKey('Esc')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Esc</button>
-                <button onclick="sendTerminalKey('Up')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▲</button>
-                <button onclick="sendTerminalKey('Down')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▼</button>
-                <button onclick="sendTerminalKey('Left')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">◀</button>
-                <button onclick="sendTerminalKey('Right')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">▶</button>
-                <button onclick="sendTerminalKey('Enter')" class="px-2 py-1 bg-brand-accent hover:bg-brand-500 border border-brand-border text-[10px] text-white rounded font-semibold transition">Enter</button>
-                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+D</button>
-                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2 py-1 bg-brand-dark hover:bg-brand-border border border-brand-border text-[10px] text-slate-300 hover:text-white rounded font-semibold transition">Ctrl+Z</button>
+            <!-- Terminal Helper Buttons (Mobile & Android Touch Shortcuts) -->
+            <div id="terminal-shortcuts" class="px-2 py-1.5 bg-brand-dark border-t border-brand-border flex items-center overflow-x-auto shrink-0 select-none gap-1.5 scrollbar-hide">
+                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+C</button>
+                <button onclick="sendTerminalKey('Tab')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Tab</button>
+                <button onclick="sendTerminalKey('Esc')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Esc</button>
+                <button onclick="sendTerminalKey('Up')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▲</button>
+                <button onclick="sendTerminalKey('Down')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▼</button>
+                <button onclick="sendTerminalKey('Left')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">◀</button>
+                <button onclick="sendTerminalKey('Right')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▶</button>
+                <button onclick="sendTerminalKey('Enter')" class="px-2.5 py-1 bg-brand-accent hover:bg-purple-700 active:scale-95 border border-brand-border text-xs text-white rounded font-mono font-bold transition shrink-0">Enter</button>
+                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+D</button>
+                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+Z</button>
             </div>
             <!-- Quick Commands Bar -->
-            <div id="terminal-quick-cmds" class="px-3 py-2 bg-brand-dark/20 flex flex-wrap gap-1.5 border-t border-brand-border shrink-0 select-none">
-                <span class="text-[10px] text-slate-500 self-center mr-1 font-semibold uppercase">Quick:</span>
+            <div id="terminal-quick-cmds" class="px-3 py-1.5 bg-brand-dark/40 flex flex-wrap items-center gap-1.5 border-t border-brand-border shrink-0 select-none">
+                <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Quick:</span>
+                <button onclick="executeCommand('agy')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-accent/30 text-brand-accent rounded border border-brand-accent/40 text-[10px] font-bold transition font-mono">
+                    agy
+                </button>
                 <button onclick="executeCommand('agy-mobile status')" class="px-2 py-0.5 bg-brand-panel hover:bg-brand-600 text-slate-300 hover:text-white rounded border border-brand-border text-[10px] transition font-mono" title="Cek status server Mobile IDE">
                     agy-mobile status
                 </button>
@@ -690,11 +577,11 @@
                 </button>
             </div>
             <!-- Terminal Run Command -->
-            <div class="p-3 border-t border-brand-border bg-brand-dark/40 shrink-0">
+            <div class="p-2.5 border-t border-brand-border bg-brand-dark/60 shrink-0">
                 <form id="terminal-form" onsubmit="runCommand(event)" class="flex items-center space-x-2">
-                    <span class="text-xs text-slate-500 font-mono">$</span>
-                    <input type="text" id="terminal-input" placeholder="go run main.go, git status..." class="flex-1 bg-brand-panel border border-brand-border rounded-lg p-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-brand-500 font-mono">
-                    <button type="submit" class="px-3 py-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-300 rounded-lg text-xs font-semibold transition">
+                    <span class="text-xs text-brand-accent font-mono font-bold">$</span>
+                    <input type="text" id="terminal-input" placeholder="go run main.go, git status, agy..." class="flex-1 bg-brand-panel border border-brand-border rounded-lg p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono">
+                    <button type="submit" class="px-3 py-2 bg-brand-accent hover:bg-purple-700 text-white rounded-lg text-xs font-semibold transition">
                         Run
                     </button>
                 </form>
@@ -851,10 +738,7 @@
             <i data-lucide="code" class="w-5 h-5"></i>
             <span class="text-[10px] mt-0.5">Code</span>
         </button>
-        <button onclick="switchTab('browser')" id="btn-tab-browser" class="flex flex-col items-center py-1.5 px-3 rounded-lg text-slate-400 transition hover:text-white">
-            <i data-lucide="globe" class="w-5 h-5"></i>
-            <span class="text-[10px] mt-0.5">Browser</span>
-        </button>
+
         <button onclick="switchTab('chat')" id="btn-tab-chat" class="flex flex-col items-center py-1.5 px-3 rounded-lg text-slate-400 transition hover:text-white">
             <i data-lucide="sparkles" class="w-5 h-5"></i>
             <span class="text-[10px] mt-0.5">Chat</span>
@@ -978,50 +862,17 @@
                 chatSendBtn.addEventListener('touchstart', triggerChatSubmit);
             }
 
-            // Restore browser panel state (Default to Closed unless explicitly opened)
-            const savedState = localStorage.getItem('browserPanelOpen');
-            if (savedState === 'true') {
-                toggleLiveBrowserPanel(true);
-            } else {
-                toggleLiveBrowserPanel(false);
-            }
-
             // Set up responsive tabs
             adjustLayoutForViewport();
         });
 
         function updateCenterPanelsLayout() {
             const codePanel = document.getElementById('panel-code');
-            const browserPanel = document.getElementById('panel-browser');
-            if (!codePanel || !browserPanel) return;
+            if (!codePanel) return;
 
             if (window.innerWidth >= 768) {
-                codePanel.classList.remove('w-full', 'h-full', 'z-30');
-                browserPanel.classList.remove('w-full', 'h-full', 'z-30');
-                
-                const hasOpenFile = !!activeFilePath;
-
-                if (!hasOpenFile) {
-                    // No code file open: Hide editor, Live Browser takes 100% full width!
-                    codePanel.classList.add('hidden');
-                    if (isBrowserPanelOpen) {
-                        browserPanel.classList.remove('hidden');
-                        browserPanel.className = "flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-15 w-full";
-                    } else {
-                        browserPanel.classList.add('hidden');
-                    }
-                } else {
-                    // File IS open in editor:
-                    codePanel.classList.remove('hidden');
-                    codePanel.className = "flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-10 md:flex";
-
-                    if (isBrowserPanelOpen) {
-                        browserPanel.classList.remove('hidden');
-                        browserPanel.className = "flex-1 flex flex-col bg-brand-panel border-l border-brand-border overflow-hidden transition-all duration-300 z-15 relative";
-                    } else {
-                        browserPanel.classList.add('hidden');
-                    }
-                }
+                codePanel.classList.remove('w-full', 'h-full', 'z-30', 'hidden');
+                codePanel.className = "flex-1 flex flex-col bg-brand-panel overflow-hidden transition-all duration-300 relative z-10 md:flex";
             } else {
                 switchTab(currentTab);
             }
@@ -1044,312 +895,13 @@
 
         window.addEventListener('resize', adjustLayoutForViewport);
 
-        // State for Live Browser Preview (Default Closed)
-        let isBrowserPanelOpen = false;
-        let isBrowserAutoReload = true;
-
-        function toggleLiveBrowserPanel(forceState) {
-            if (typeof forceState === 'boolean') {
-                isBrowserPanelOpen = forceState;
-            } else {
-                isBrowserPanelOpen = !isBrowserPanelOpen;
-            }
-            localStorage.setItem('browserPanelOpen', isBrowserPanelOpen ? 'true' : 'false');
-
-            const topbarBtn = document.getElementById('topbar-btn-browser');
-            if (topbarBtn) {
-                if (isBrowserPanelOpen) {
-                    topbarBtn.classList.add('bg-brand-accent/30', 'border-brand-accent');
-                } else {
-                    topbarBtn.classList.remove('bg-brand-accent/30', 'border-brand-accent');
-                }
-            }
-
-            if (window.innerWidth < 768) {
-                if (isBrowserPanelOpen) {
-                    switchTab('browser');
-                } else {
-                    switchTab('code');
-                }
-            } else {
-                updateCenterPanelsLayout();
-            }
-            if (isBrowserPanelOpen) {
-                refreshLiveBrowser();
-            }
-            lucide.createIcons();
-        }
-
-        let isBrowserProxyMode = false;
-        let isBrowserDevToolsOpen = false;
-        let browserConsoleLogCount = 0;
-
-        function toggleBrowserProxyMode() {
-            isBrowserProxyMode = !isBrowserProxyMode;
-            const btn = document.getElementById('browser-proxy-btn');
-            if (btn) {
-                if (isBrowserProxyMode) {
-                    btn.className = "px-2 py-1 bg-brand-accent/20 border border-brand-accent/40 text-brand-accent rounded text-[11px] font-semibold flex items-center space-x-1 transition";
-                    btn.title = "Proxy Mode AKTIF (Bypassing CSP & X-Frame-Options)";
-                } else {
-                    btn.className = "px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[11px] font-semibold flex items-center space-x-1 transition";
-                    btn.title = "Proxy Mode Nonaktif";
-                }
-            }
-            refreshLiveBrowser();
-        }
-
-        function toggleBrowserDevTools() {
-            isBrowserDevToolsOpen = !isBrowserDevToolsOpen;
-            const drawer = document.getElementById('browser-devtools-drawer');
-            const btn = document.getElementById('browser-devtools-btn');
-            if (drawer) {
-                if (isBrowserDevToolsOpen) {
-                    drawer.classList.remove('hidden');
-                } else {
-                    drawer.classList.add('hidden');
-                }
-            }
-            lucide.createIcons();
-        }
-
-        function appendBrowserConsoleLog(type, message) {
-            const container = document.getElementById('browser-console-logs');
-            const badge = document.getElementById('browser-console-badge');
-            if (!container) return;
-
-            const time = new Date().toLocaleTimeString('id-ID', { hour12: false });
-            const logRow = document.createElement('div');
-            
-            let colorClass = "text-slate-300";
-            let typeLabel = "LOG";
-
-            if (type === 'error') {
-                colorClass = "text-red-400 bg-red-950/30 px-1 py-0.5 rounded";
-                typeLabel = "ERROR";
-                browserConsoleLogCount++;
-                if (badge) {
-                    badge.innerText = browserConsoleLogCount;
-                    badge.classList.remove('hidden');
-                }
-            } else if (type === 'warn') {
-                colorClass = "text-amber-300";
-                typeLabel = "WARN";
-            } else if (type === 'info') {
-                colorClass = "text-sky-300";
-                typeLabel = "INFO";
-            }
-
-            logRow.className = `flex items-start space-x-2 ${colorClass}`;
-            logRow.innerHTML = `<span class="text-slate-600 shrink-0 text-[10px]">[${time}]</span><span class="font-bold text-[10px] shrink-0">${typeLabel}:</span><span class="break-all flex-1">${escapeHtml(message)}</span>`;
-            container.appendChild(logRow);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function clearBrowserConsole() {
-            const container = document.getElementById('browser-console-logs');
-            const badge = document.getElementById('browser-console-badge');
-            if (container) {
-                container.innerHTML = '<div class="text-slate-500 italic text-[10px] py-1">[DevTools] Console cleared.</div>';
-            }
-            browserConsoleLogCount = 0;
-            if (badge) badge.classList.add('hidden');
-        }
-
-        function resolveTargetUrl(rawUrl) {
-            let url = (rawUrl || '').trim();
-            const serverHost = window.location.hostname || 'localhost';
-
-            const isLocalServer = serverHost === 'localhost' || 
-                                 serverHost === '127.0.0.1' || 
-                                 /^192\.168\./.test(serverHost) || 
-                                 /^10\./.test(serverHost) || 
-                                 /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(serverHost);
-
-            if (!url || url === 'about:blank') {
-                if (isLocalServer) {
-                    url = 'http://' + serverHost + ':8080/';
-                } else {
-                    url = window.location.origin + '/';
-                }
-            } else if (url.startsWith(':')) {
-                url = (isLocalServer ? 'http://' : window.location.protocol + '//') + serverHost + url;
-            } else if (url.startsWith('/')) {
-                url = window.location.origin + url;
-            } else if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                url = 'http://' + url;
-            }
-
-            if (isBrowserProxyMode && !url.includes('/api/browser/proxy?url=')) {
-                return '/api/browser/proxy?url=' + encodeURIComponent(url);
-            }
-
-            return url;
-        }
-
-        function triggerBrowserProgressAnimation() {
-            const bar = document.getElementById('browser-loading-bar');
-            if (!bar) return;
-            bar.style.width = '30%';
-            bar.style.opacity = '1';
-            setTimeout(() => { if (bar.style.opacity === '1') bar.style.width = '75%'; }, 150);
-        }
-
-        function finishBrowserProgressAnimation() {
-            const bar = document.getElementById('browser-loading-bar');
-            if (!bar) return;
-            bar.style.width = '100%';
-            setTimeout(() => {
-                bar.style.opacity = '0';
-                setTimeout(() => { bar.style.width = '0%'; }, 200);
-            }, 180);
-        }
-
-        function syncBrowserUrlOnLoad(iframe) {
-            finishBrowserProgressAnimation();
-            if (!iframe) return;
-            try {
-                const currentHref = iframe.contentWindow.location.href;
-                if (currentHref && currentHref !== 'about:blank') {
-                    const input = document.getElementById('browser-url-input');
-                    let displayUrl = currentHref;
-                    if (displayUrl.includes('/api/browser/proxy?url=')) {
-                        displayUrl = decodeURIComponent(displayUrl.split('/api/browser/proxy?url=')[1] || '');
-                    }
-                    if (input && input.value !== displayUrl) input.value = displayUrl;
-                }
-
-                // Inject console bridge if same-origin
-                const win = iframe.contentWindow;
-                if (win && !win.__devToolsBridgeInjected) {
-                    win.__devToolsBridgeInjected = true;
-                    const origLog = win.console.log;
-                    const origWarn = win.console.warn;
-                    const origErr = win.console.error;
-
-                    win.console.log = function(...args) { origLog.apply(win.console, args); appendBrowserConsoleLog('log', args.join(' ')); };
-                    win.console.warn = function(...args) { origWarn.apply(win.console, args); appendBrowserConsoleLog('warn', args.join(' ')); };
-                    win.console.error = function(...args) { origErr.apply(win.console, args); appendBrowserConsoleLog('error', args.join(' ')); };
-                    win.addEventListener('error', function(e) { appendBrowserConsoleLog('error', e.message + ' at ' + e.filename + ':' + e.lineno); });
-                }
-            } catch (e) {
-                // Cross-origin: security boundary
-            }
-        }
-
-        function refreshLiveBrowser() {
-            const iframe = document.getElementById('live-browser-iframe');
-            const input = document.getElementById('browser-url-input');
-            if (!iframe) return;
-            triggerBrowserProgressAnimation();
-            const resolved = resolveTargetUrl(input ? input.value : '');
-            if (input && input.value !== resolved && !resolved.includes('/api/browser/proxy?url=')) input.value = resolved;
-            iframe.src = resolved;
-        }
-
-        function loadBrowserUrl(url) {
-            const resolved = resolveTargetUrl(url);
-            const input = document.getElementById('browser-url-input');
-            const iframe = document.getElementById('live-browser-iframe');
-            if (input) input.value = resolved;
-            if (iframe) iframe.src = resolved;
-        }
-
-        function navigateBrowserBack() {
-            try {
-                document.getElementById('live-browser-iframe').contentWindow.history.back();
-            } catch(e) {
-                refreshLiveBrowser();
-            }
-        }
-
-        function navigateBrowserForward() {
-            try {
-                document.getElementById('live-browser-iframe').contentWindow.history.forward();
-            } catch(e) {
-                refreshLiveBrowser();
-            }
-        }
-
-        function setBrowserWidth(w) {
-            const wrapper = document.getElementById('browser-viewport-wrapper');
-            if (wrapper) {
-                wrapper.style.width = w;
-            }
-        }
-
-        function openBrowserExternal() {
-            const input = document.getElementById('browser-url-input');
-            const resolved = resolveTargetUrl(input ? input.value : '');
-            window.open(resolved, '_blank');
-        }
-
-        function toggleBrowserAutoReload() {
-            isBrowserAutoReload = !isBrowserAutoReload;
-            const btn = document.getElementById('browser-auto-reload-btn');
-            if (btn) {
-                if (isBrowserAutoReload) {
-                    btn.className = "px-2 py-1 bg-brand-accent/20 border border-brand-accent/40 text-brand-accent rounded text-[11px] font-semibold flex items-center space-x-1 transition";
-                } else {
-                    btn.className = "px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 rounded text-[11px] font-semibold flex items-center space-x-1 transition";
-                }
-            }
-        }
-
-        let isBrowserFullscreen = false;
-
-        function toggleBrowserFullscreen(forceState) {
-            if (typeof forceState === 'boolean') {
-                isBrowserFullscreen = forceState;
-            } else {
-                isBrowserFullscreen = !isBrowserFullscreen;
-            }
-
-            const browserPanel = document.getElementById('panel-browser');
-            const btn = document.getElementById('browser-fullscreen-btn');
-
-            if (!browserPanel) return;
-
-            if (isBrowserFullscreen) {
-                browserPanel.classList.add('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
-                browserPanel.classList.remove('relative', 'flex-1', 'border-l');
-                if (btn) {
-                    btn.innerHTML = '<i data-lucide="minimize-2" class="w-3.5 h-3.5 text-brand-accent"></i>';
-                    btn.title = "Keluar saka Layar Kebak (Esc / Alt+F)";
-                }
-            } else {
-                browserPanel.classList.remove('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
-                browserPanel.classList.add('relative', 'flex-1', 'border-l');
-                if (btn) {
-                    btn.innerHTML = '<i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>';
-                    btn.title = "Layar Kebak / Full Screen Browser (Alt+F)";
-                }
-            }
-            lucide.createIcons();
-        }
-
-        window.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'b') {
-                e.preventDefault();
-                toggleLiveBrowserPanel();
-            }
-            if (e.altKey && e.key.toLowerCase() === 'f') {
-                e.preventDefault();
-                toggleBrowserFullscreen();
-            }
-            if (e.key === 'Escape' && isBrowserFullscreen) {
-                toggleBrowserFullscreen(false);
-            }
-        });
-
-        // Tab switcher for mobile & browser
+        // Tab switcher for mobile
         function switchTab(tab) {
             currentTab = tab;
 
             const panels = {
                 files: document.getElementById('panel-files'),
                 code: document.getElementById('panel-code'),
-                browser: document.getElementById('panel-browser'),
                 chat: document.getElementById('panel-chat'),
                 terminal: document.getElementById('panel-bottom')
             };
@@ -1357,7 +909,6 @@
             const buttons = {
                 files: document.getElementById('btn-tab-files'),
                 code: document.getElementById('btn-tab-code'),
-                browser: document.getElementById('btn-tab-browser'),
                 chat: document.getElementById('btn-tab-chat'),
                 terminal: document.getElementById('btn-tab-terminal')
             };
@@ -1399,16 +950,9 @@
                 updateCenterPanelsLayout();
             }
 
-            // Refresh editor/browser to render correctly
+            // Refresh editor to render correctly
             if (tab === 'code' && editorInstance) {
                 setTimeout(() => editorInstance.refresh(), 100);
-            }
-            if (tab === 'browser') {
-                if (!isBrowserPanelOpen) {
-                    toggleLiveBrowserPanel();
-                } else {
-                    refreshLiveBrowser();
-                }
             }
             if (tab === 'terminal') {
                 setTimeout(resizeTerminalToFit, 100);
@@ -1869,13 +1413,16 @@
 
         function populateModelSelect(models) {
             const select = document.getElementById('model-select');
+            if (!select) return;
             const previous = select.value;
             if (models && models.length > 0) {
                 select.innerHTML = '';
-                models.forEach(model => {
+                models.forEach(rawModel => {
+                    const cleanModel = (rawModel || '').replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '').replace(/[\x00-\x1F\x7F-\x9F]/g, '').trim();
+                    if (!cleanModel) return;
                     const opt = document.createElement('option');
-                    opt.value = model;
-                    opt.innerText = model;
+                    opt.value = cleanModel;
+                    opt.innerText = cleanModel;
                     select.appendChild(opt);
                 });
                 if (previous && models.includes(previous)) select.value = previous;
@@ -2188,10 +1735,6 @@
                 setTimeout(() => {
                     label.classList.remove('bg-green-950', 'text-green-300');
                 }, 1000);
-
-                if (isBrowserAutoReload && isBrowserPanelOpen) {
-                    refreshLiveBrowser();
-                }
 
             } catch (err) {
                 alert(err.message);
@@ -3132,21 +2675,66 @@
             sendTerminalInput(command + '\r');
         }
 
+        let isTerminalMaximized = false;
+
+        function toggleMaximizeTerminal() {
+            isTerminalMaximized = !isTerminalMaximized;
+            const bottomPanel = document.getElementById('panel-bottom');
+            const btn = document.getElementById('btn-maximize-terminal');
+            if (!bottomPanel) return;
+
+            if (isTerminalMaximized) {
+                bottomPanel.classList.add('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
+                bottomPanel.classList.remove('h-56', 'md:h-64', 'shrink-0', 'border-t');
+                if (btn) {
+                    btn.innerHTML = '<i data-lucide="minimize-2" class="w-4 h-4 text-brand-accent"></i>';
+                    btn.title = "Restore Terminal";
+                }
+            } else {
+                bottomPanel.classList.remove('fixed', 'inset-0', 'z-50', 'w-full', 'h-full');
+                bottomPanel.classList.add('h-56', 'md:h-64', 'shrink-0', 'border-t');
+                if (btn) {
+                    btn.innerHTML = '<i data-lucide="maximize-2" class="w-4 h-4"></i>';
+                    btn.title = "Maximize Terminal";
+                }
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            setTimeout(resizeTerminalToFit, 100);
+        }
+
         function initInteractiveTerminal() {
             const container = document.getElementById('terminal-container');
             if (!container) return;
 
+            const isMobile = window.innerWidth < 768;
             term = new Terminal({
                 cursorBlink: true,
                 convertEol: true,
-                fontSize: 11,
-                fontFamily: 'Fira Code, monospace',
+                fontSize: isMobile ? 12 : 13,
+                fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', monospace",
                 theme: {
-                    background: '#000000',
-                    foreground: '#cbd5e1',
+                    background: '#090a15',
+                    foreground: '#f8fafc',
                     cursor: '#a855f7',
+                    selectionBackground: '#4c1d95',
+                    black: '#0f172a',
+                    red: '#f43f5e',
+                    green: '#10b981',
+                    yellow: '#f59e0b',
+                    blue: '#3b82f6',
+                    magenta: '#d946ef',
+                    cyan: '#06b6d4',
+                    white: '#f8fafc',
+                    brightBlack: '#475569',
+                    brightRed: '#fb7185',
+                    brightGreen: '#34d399',
+                    brightYellow: '#fbbf24',
+                    brightBlue: '#60a5fa',
+                    brightMagenta: '#e879f9',
+                    brightCyan: '#22d3ee',
+                    brightWhite: '#ffffff'
                 },
-                rows: 24,
+                rows: isMobile ? 18 : 24,
                 cols: 80
             });
             term.open(container);
@@ -3199,6 +2787,7 @@
 
             if (cols > 10 && rows > 3) {
                 term.resize(cols, rows);
+                fetch(`/api/terminal/resize?cols=${cols}&rows=${rows}`).catch(() => {});
             }
         }
 
@@ -3305,26 +2894,8 @@
         }
 
         function openActivePortInBrowser(port) {
-            // Internal Loopback Proxy URL connecting directly to SERVER's 127.0.0.1:port
-            const proxyUrl = '/api/browser/proxy?url=' + encodeURIComponent('http://127.0.0.1:' + port + '/');
-            const displayUrl = 'http://127.0.0.1:' + port + '/';
-
-            const input = document.getElementById('browser-url-input');
-            if (input) input.value = displayUrl;
-
-            const iframe = document.getElementById('live-browser-iframe');
-            if (iframe) {
-                triggerBrowserProgressAnimation();
-                iframe.src = proxyUrl;
-            }
-
-            if (window.innerWidth < 768) {
-                switchTab('browser');
-            } else {
-                if (!isBrowserPanelOpen) {
-                    toggleLiveBrowserPanel();
-                }
-            }
+            const host = window.location.hostname || 'localhost';
+            window.open(`http://${host}:${port}/`, '_blank');
         }
 
         function toggleMinimizePorts() {
@@ -3851,10 +3422,12 @@
                 
                 if (btnText) btnText.innerText = "Buka Google Auth Window";
                 if (data.url) {
-                    window.open(data.url, '_blank');
                     if (link) {
                         link.href = data.url;
-                        link.onclick = null; // Remove dynamic trigger once we have the link
+                        link.target = '_blank';
+                    }
+                    if (e && e.isTrusted) {
+                        window.open(data.url, '_blank');
                     }
                 }
             } catch (err) {
@@ -4027,33 +3600,54 @@
                 // Render account pool
                 if (poolRes.ok && poolList && poolContainer) {
                     const poolData = await poolRes.json();
-                    const accounts = poolData.accounts || [];
+                    const details = poolData.details || [];
+                    const rawAccounts = poolData.accounts || [];
+                    const accountItems = details.length > 0 ? details : rawAccounts.map(a => (typeof a === 'string' ? { email: a, status: 'valid' } : a));
                     const active = poolData.active || '';
                     
-                    if (accounts.length > 0) {
+                    if (accountItems.length > 0) {
                         poolContainer.classList.remove('hidden');
                         let html = '';
-                        accounts.forEach(acc => {
-                            const isActive = acc === active;
-                            const maskedAcc = maskEmail(acc);
+                        accountItems.forEach(accItem => {
+                            const accEmail = accItem.email || accItem;
+                            const accStatus = accItem.status || 'valid';
+                            const accErr = accItem.errorMsg || '';
+                            const isActive = accEmail === active;
+                            const maskedAcc = maskEmail(accEmail);
+
+                            let badgeHtml = '';
+                            if (accStatus === 'suspended') {
+                                badgeHtml = `<span class="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 font-semibold px-1.5 py-0.5 rounded shrink-0" title="${escapeHtml(accErr || 'Suspended by Google (TOS Violation)')}">Suspended</span>`;
+                            } else if (accStatus === 'quota_exhausted') {
+                                badgeHtml = `<span class="text-[9px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-semibold px-1.5 py-0.5 rounded shrink-0" title="${escapeHtml(accErr || 'Quota Habis')}">Quota Habis</span>`;
+                            } else if (accStatus === 'unauthenticated') {
+                                badgeHtml = `<span class="text-[9px] bg-orange-500/20 text-orange-400 border border-orange-500/30 font-semibold px-1.5 py-0.5 rounded shrink-0" title="${escapeHtml(accErr || 'Unauthenticated')}">Unauth</span>`;
+                            } else {
+                                badgeHtml = `<span class="text-[9px] bg-green-500/20 text-green-400 border border-green-500/30 font-semibold px-1.5 py-0.5 rounded shrink-0">Valid</span>`;
+                            }
+
                             html += `
-                                <div class="flex items-center justify-between p-2 rounded-lg ${isActive ? 'bg-brand-600/20 border border-brand-accent/30' : 'bg-brand-dark/20 border border-brand-border/40'} text-[11px]">
-                                    <div class="flex items-center space-x-1.5 truncate max-w-[200px]">
-                                        <div class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : 'bg-slate-500'}"></div>
-                                        <span class="font-mono text-slate-200 truncate ${isActive ? 'font-bold' : ''}" title="${escapeHtml(maskedAcc)}">${escapeHtml(maskedAcc)}</span>
-                                    </div>
-                                    <div class="flex items-center space-x-1">
-                                        ${!isActive ? `
-                                            <button onclick="switchAccount('${escapeHtml(acc)}')" class="py-0.5 px-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded text-[9px] font-semibold transition">
-                                                Switch
+                                <div class="p-2 rounded-lg ${isActive ? 'bg-brand-600/20 border border-brand-accent/30' : 'bg-brand-dark/20 border border-brand-border/40'} text-[11px] space-y-1">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center space-x-1.5 truncate max-w-[170px]">
+                                            <div class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500' : (accStatus === 'suspended' ? 'bg-red-500' : (accStatus === 'quota_exhausted' ? 'bg-yellow-500' : 'bg-slate-500'))}"></div>
+                                            <span class="font-mono text-slate-200 truncate ${isActive ? 'font-bold' : ''}" title="${escapeHtml(maskedAcc)}">${escapeHtml(maskedAcc)}</span>
+                                        </div>
+                                        <div class="flex items-center space-x-1.5">
+                                            ${badgeHtml}
+                                            ${!isActive ? `
+                                                <button onclick="switchAccount('${escapeHtml(accEmail)}')" class="py-0.5 px-2 bg-brand-panel border border-brand-border hover:bg-brand-border text-slate-200 rounded text-[9px] font-semibold transition">
+                                                    Switch
+                                                </button>
+                                            ` : `
+                                                <span class="text-[9px] text-green-400 font-bold px-1">Aktif</span>
+                                            `}
+                                            <button onclick="deleteAccount('${escapeHtml(accEmail)}')" class="p-1 hover:text-red-400 text-slate-400 transition" title="Hapus Akun">
+                                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                                             </button>
-                                        ` : `
-                                            <span class="text-[9px] text-green-400 font-bold px-2">Aktif</span>
-                                        `}
-                                        <button onclick="deleteAccount('${escapeHtml(acc)}')" class="p-1 hover:text-red-400 text-slate-400 transition" title="Hapus Akun">
-                                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                                        </button>
+                                        </div>
                                     </div>
+                                    ${accErr && accStatus !== 'valid' ? `<div class="text-[9px] text-red-400/90 bg-red-950/30 border border-red-900/40 rounded p-1 truncate" title="${escapeHtml(accErr)}">${escapeHtml(accErr)}</div>` : ''}
                                 </div>
                             `;
                         });
@@ -4248,63 +3842,69 @@
             const updateInst = document.getElementById('update-inst');
             const releaseSelect = document.getElementById('release-version-select');
 
+            let releases = [];
             try {
                 const res = await fetch('/api/github/releases');
-                if (!res.ok) throw new Error();
-                const releases = await res.json();
-                const tagRank = tag => (tag.match(/\d+|[a-zA-Z]+/g) || []).map(part => /^\d+$/.test(part) ? Number(part) : part);
-                const compareTags = (a, b) => {
-                    const aa = tagRank(a);
-                    const bb = tagRank(b);
-                    for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
-                        const x = aa[i] ?? 0;
-                        const y = bb[i] ?? 0;
-                        if (typeof x === 'number' && typeof y === 'number' && x !== y) return x - y;
-                        const sx = String(x), sy = String(y);
-                        if (sx !== sy) return sx.localeCompare(sy);
-                    }
-                    return 0;
-                };
-                const testingTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+\.\d+\.testing\.\d+$/.test(tag || ''));
-                const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
-                const latestStable = stableTags.sort(compareTags).pop();
-                const latestTesting = testingTags.sort(compareTags).pop();
-                const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'latest');
-                const current = "v1.6.8";
-
-                if (verDisplay) verDisplay.innerText = latest;
-                if (releaseSelect) {
-                    releaseSelect.innerHTML = `<option value="latest">latest (${latest})</option>`;
-                    [...releases].sort((a, b) => compareTags(b.tag_name || '', a.tag_name || '')).forEach(rel => {
-                        if (!rel.tag_name) return;
-                        const opt = document.createElement('option');
-                        opt.value = rel.tag_name;
-                        opt.textContent = `${rel.tag_name}${rel.prerelease ? ' (testing/pre-release)' : ''}`;
-                        releaseSelect.appendChild(opt);
-                    });
+                if (res.ok) {
+                    releases = await res.json();
                 }
+            } catch (err) {}
 
-                if (latest && latest !== current) {
-                    if (dot) {
-                        dot.className = "w-1.5 h-1.5 rounded-full bg-green-500 animate-ping";
-                        dot.title = `Update ${latest} kasedhiya!`;
-                    }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-green-400 font-bold">Update versi ${latest} kasedhiya!</span>`;
-                } else {
-                    if (dot) {
-                        dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
-                        dot.title = "Aplikasi versi paling anyar";
-                    }
-                    if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (${current}). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
-                }
-                if (updateInst) updateInst.classList.remove('hidden');
-            } catch (err) {
-                if (verDisplay) verDisplay.innerText = "Gagal mriksa";
-                if (statusMsg) statusMsg.innerHTML = `<span class="text-red-400">Gagal nyambung menyang GitHub API.</span>`;
-                if (updateInst) updateInst.classList.remove('hidden');
+            if (!releases || !Array.isArray(releases) || releases.length === 0) {
+                releases = [
+                    { tag_name: 'v1.6.9', prerelease: false },
+                    { tag_name: 'v1.6.8', prerelease: false },
+                    { tag_name: 'v1.6.7', prerelease: false }
+                ];
             }
 
-            lucide.createIcons();
+            const tagRank = tag => (tag.match(/\d+|[a-zA-Z]+/g) || []).map(part => /^\d+$/.test(part) ? Number(part) : part);
+            const compareTags = (a, b) => {
+                const aa = tagRank(a);
+                const bb = tagRank(b);
+                for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
+                    const x = aa[i] ?? 0;
+                    const y = bb[i] ?? 0;
+                    if (typeof x === 'number' && typeof y === 'number' && x !== y) return x - y;
+                    const sx = String(x), sy = String(y);
+                    if (sx !== sy) return sx.localeCompare(sy);
+                }
+                return 0;
+            };
+            const testingTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+\.\d+\.testing\.\d+$/.test(tag || ''));
+            const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
+            const latestStable = stableTags.sort(compareTags).pop();
+            const latestTesting = testingTags.sort(compareTags).pop();
+            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.6.9');
+            const current = "v1.6.9";
+
+            if (verDisplay) verDisplay.innerText = latest;
+            if (releaseSelect) {
+                releaseSelect.innerHTML = `<option value="latest">latest (${latest})</option>`;
+                [...releases].sort((a, b) => compareTags(b.tag_name || '', a.tag_name || '')).forEach(rel => {
+                    if (!rel.tag_name) return;
+                    const opt = document.createElement('option');
+                    opt.value = rel.tag_name;
+                    opt.textContent = `${rel.tag_name}${rel.prerelease ? ' (testing/pre-release)' : ''}`;
+                    releaseSelect.appendChild(opt);
+                });
+            }
+
+            if (latest && latest !== current) {
+                if (dot) {
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-green-500 animate-ping";
+                    dot.title = `Update ${latest} kasedhiya!`;
+                }
+                if (statusMsg) statusMsg.innerHTML = `<span class="text-green-400 font-bold">Update versi ${latest} kasedhiya!</span>`;
+            } else {
+                if (dot) {
+                    dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
+                    dot.title = "Aplikasi versi paling anyar";
+                }
+                if (statusMsg) statusMsg.innerHTML = `<span class="text-slate-400">Aplikasi wis nganggo versi paling anyar (${current}). Tetep bisa pilih versi lawas/testing saka dropdown.</span>`;
+            }
+            if (updateInst) updateInst.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         async function triggerSelfUpdate() {
@@ -4878,7 +4478,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.8</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.6.9</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
@@ -5273,31 +4873,383 @@
                     <div class="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl space-y-1">
                         <div class="font-semibold text-amber-300 flex items-center space-x-1.5">
                             <i data-lucide="shield-check" class="w-4 h-4"></i>
-                            <span>Keamanan Akses IDE</span>
+                            <span>Keamanan Akses IDE & API Key</span>
                         </div>
-                        <p class="text-[11px] text-slate-400">Ubah kata sandi (*password*) yang digunakan untuk masuk ke Mobile IDE Antigravity.</p>
+                        <p class="text-[11px] text-slate-400">Atur kata sandi masuk Mobile IDE dan kelola API Key otentikasi untuk OpenAI-compatible API wrapper.</p>
                     </div>
 
-                    <div class="space-y-3">
-                        <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Kata Sandi Baru</label>
-                            <input id="stg-sec-pwd" type="password" placeholder="Masukkan sandi baru" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono" />
+                    <!-- API Key / Bearer Token Viewer & Regenerate Section -->
+                    <div class="p-3 bg-brand-dark/70 border border-brand-border rounded-xl space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="font-bold text-slate-200 text-[11px] uppercase tracking-wider flex items-center space-x-1.5">
+                                <i data-lucide="key-round" class="w-4 h-4 text-brand-accent"></i>
+                                <span>OpenAI Wrapper API Key & Endpoint</span>
+                            </div>
+                            <span class="text-[9px] bg-brand-accent/20 text-brand-accent border border-brand-accent/30 font-semibold px-2 py-0.5 rounded-full">Active</span>
                         </div>
+                        <p class="text-[10px] text-slate-400">Gunakan API Key dan Base URL ini untuk menghubungkan aplikasi eksternal (seperti SillyTavern, NextChat, Python script, dll) ke endpoint OpenAI-compatible IDE.</p>
+                        
+                        <!-- Base URL Input & Copy -->
                         <div>
-                            <label class="block text-slate-300 font-semibold mb-1">Konfirmasi Kata Sandi Baru</label>
-                            <input id="stg-sec-pwd-confirm" type="password" placeholder="Ketik ulang sandi baru" class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono" />
+                            <label class="block text-slate-400 text-[10px] font-semibold mb-1">Base URL Endpoint (`/v1`)</label>
+                            <div class="relative flex items-center">
+                                <input id="stg-sec-base-url" type="text" readonly value="Loading..." class="w-full bg-brand-panel border border-brand-border rounded-xl pl-3 pr-10 py-2 text-white font-mono text-xs focus:outline-none select-all" />
+                                <button type="button" onclick="copyBaseURLFromModal()" class="absolute right-1.5 p-1 hover:bg-brand-border text-slate-400 hover:text-white rounded transition" title="Copy Base URL">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- API Key Input & Copy -->
+                        <div>
+                            <label class="block text-slate-400 text-[10px] font-semibold mb-1">OpenAI API Key (`Bearer Token`)</label>
+                            <div class="relative flex items-center">
+                                <input id="stg-sec-active-key" type="password" readonly value="Loading..." class="w-full bg-brand-panel border border-brand-border rounded-xl pl-3 pr-20 py-2 text-white font-mono text-xs focus:outline-none select-all" />
+                                <div class="absolute right-1.5 flex items-center space-x-1">
+                                    <button type="button" onclick="toggleShowAPIKeyFromModal()" id="btn-toggle-sec-key" class="p-1 hover:bg-brand-border text-slate-400 hover:text-white rounded transition" title="Show/Hide Key">
+                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                    </button>
+                                    <button type="button" onclick="copyAPIKeyFromModal()" class="p-1 hover:bg-brand-border text-slate-400 hover:text-white rounded transition" title="Copy Key">
+                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="stg-sec-key-copy-status" class="hidden text-[10px] text-emerald-400 font-medium"></div>
+
+                        <!-- Quick Copy Actions & Regenerate Button -->
+                        <div class="grid grid-cols-3 gap-2 pt-1">
+                            <button type="button" onclick="copyAPIKeyFromModal()" class="py-1.5 px-2 bg-brand-panel hover:bg-brand-border border border-brand-border text-slate-200 rounded-xl text-[11px] font-semibold transition flex items-center justify-center space-x-1">
+                                <i data-lucide="copy" class="w-3.5 h-3.5 text-brand-accent"></i>
+                                <span>Salin Key</span>
+                            </button>
+                            <button type="button" onclick="copyBaseURLFromModal()" class="py-1.5 px-2 bg-brand-panel hover:bg-brand-border border border-brand-border text-slate-200 rounded-xl text-[11px] font-semibold transition flex items-center justify-center space-x-1">
+                                <i data-lucide="link" class="w-3.5 h-3.5 text-sky-400"></i>
+                                <span>Salin Base URL</span>
+                            </button>
+                            <button type="button" onclick="regenerateAPIKeyFromModal()" id="btn-regenerate-key" class="py-1.5 px-2 bg-brand-accent/20 border border-brand-accent/40 hover:bg-brand-accent/30 text-brand-accent rounded-xl text-[11px] font-bold transition flex items-center justify-center space-x-1">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                                <span>Re-generate</span>
+                            </button>
                         </div>
                     </div>
 
-                    <div class="pt-2">
-                        <button onclick="saveSecurityPasswordFromModal()" class="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition flex items-center justify-center space-x-2">
-                            <i data-lucide="key" class="w-4 h-4"></i>
-                            <span>Update Kata Sandi</span>
-                        </button>
+                    <!-- Change IDE Security Password Section -->
+                    <div class="p-3 bg-brand-dark/50 border border-brand-border rounded-xl space-y-3">
+                        <div class="font-bold text-slate-200 text-[11px] uppercase tracking-wider flex items-center space-x-1.5">
+                            <i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>
+                            <span>Ubah Kata Sandi IDE</span>
+                        </div>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-slate-400 text-[10px] font-semibold mb-1">Kata Sandi Baru</label>
+                                <input id="stg-sec-pwd" type="password" placeholder="Masukkan sandi baru..." class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono" />
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 text-[10px] font-semibold mb-1">Konfirmasi Kata Sandi Baru</label>
+                                <input id="stg-sec-pwd-confirm" type="password" placeholder="Ketik ulang sandi baru..." class="w-full bg-brand-dark border border-brand-border rounded-xl px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 font-mono" />
+                            </div>
+                        </div>
+                        <div class="pt-1">
+                            <button onclick="saveSecurityPasswordFromModal()" class="w-full py-2 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition flex items-center justify-center space-x-2">
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                <span>Simpan Sandi Baru</span>
+                            </button>
+                        </div>
+                        <div id="stg-sec-pwd-status" class="hidden text-[10px] text-center"></div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Script handlers for Settings Modal -->
+    <script>
+        let isAPIKeyVisible = false;
+
+        function openSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            if (!modal) return;
+            modal.classList.remove('hidden');
+            switchSettingsTab('telegram');
+            loadTelegramSettingsForModal();
+            loadOpenAISettingsForModal();
+            loadSecurityKeyForModal();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeSettingsModal() {
+            const modal = document.getElementById('settings-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function switchSettingsTab(tabName) {
+            const tabs = ['telegram', 'openai', 'security'];
+            tabs.forEach(t => {
+                const btn = document.getElementById(`tab-btn-stg-${t}`);
+                const pane = document.getElementById(`stg-pane-${t}`);
+                if (btn && pane) {
+                    if (t === tabName) {
+                        btn.className = "py-3 px-4 text-brand-accent border-b-2 border-brand-accent flex items-center space-x-2 transition font-bold";
+                        pane.classList.remove('hidden');
+                    } else {
+                        btn.className = "py-3 px-4 text-slate-400 border-b-2 border-transparent hover:text-white flex items-center space-x-2 transition font-medium";
+                        pane.classList.add('hidden');
+                    }
+                }
+            });
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        async function loadTelegramSettingsForModal() {
+            const statusDiv = document.getElementById('stg-tg-status');
+            const tokenInput = document.getElementById('stg-tg-token');
+            const usersInput = document.getElementById('stg-tg-users');
+            const enabledCheck = document.getElementById('stg-tg-enabled');
+            const wsSelect = document.getElementById('stg-tg-active-workspace');
+
+            if (!statusDiv) return;
+            statusDiv.innerText = "Status: Ngundhuh setelan Telegram...";
+
+            try {
+                const res = await fetch('/api/telegram/config');
+                if (res.ok) {
+                    const cfg = await res.json();
+                    if (tokenInput) tokenInput.value = cfg.botToken || '';
+                    if (usersInput) usersInput.value = cfg.allowedUsers || '';
+                    if (enabledCheck) enabledCheck.checked = !!cfg.enabled;
+                    statusDiv.innerHTML = `Status Bot: <span class="font-bold ${cfg.isRunning ? 'text-emerald-400' : 'text-slate-400'}">${cfg.isRunning ? '🟢 Berjalan' : '⚪ Nonaktif'}</span>`;
+                }
+            } catch (e) {
+                statusDiv.innerText = "Gagal memuat setelan Telegram.";
+            }
+
+            // Populate workspace list for Telegram Remote Control
+            if (wsSelect) {
+                try {
+                    const wsRes = await fetch('/api/workspaces');
+                    if (wsRes.ok) {
+                        const wsData = await wsRes.json();
+                        let optionsHtml = '';
+                        (wsData.list || []).forEach(wPath => {
+                            const isAct = wPath === wsData.active;
+                            optionsHtml += `<option value="${escapeHtml(wPath)}" ${isAct ? 'selected' : ''}>${escapeHtml(wPath)} ${isAct ? '(Aktif)' : ''}</option>`;
+                        });
+                        wsSelect.innerHTML = optionsHtml;
+                    }
+                } catch(e) {}
+            }
+        }
+
+        async function saveTelegramSettingsFromModal() {
+            const token = (document.getElementById('stg-tg-token').value || '').trim();
+            const users = (document.getElementById('stg-tg-users').value || '').trim();
+            const enabled = document.getElementById('stg-tg-enabled').checked;
+            const statusDiv = document.getElementById('stg-tg-status');
+
+            if (statusDiv) statusDiv.innerText = "Nyimpen setelan Telegram...";
+
+            try {
+                const res = await fetch('/api/telegram/config/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ botToken: token, allowedUsers: users, enabled })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const respData = await res.json();
+                if (statusDiv) {
+                    statusDiv.innerHTML = `<span class="text-emerald-400 font-semibold">✓ ${respData.message || 'Konfigurasi Telegram disimpan.'}</span>`;
+                }
+                loadTelegramSettingsForModal();
+            } catch (err) {
+                if (statusDiv) statusDiv.innerHTML = `<span class="text-red-400">Gagal: ${escapeHtml(err.message)}</span>`;
+            }
+        }
+
+        async function changeWorkspaceFromTelegramUI(newPath) {
+            if (!newPath) return;
+            try {
+                const res = await fetch('/api/workspaces/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `path=${encodeURIComponent(newPath)}`
+                });
+                if (res.ok) {
+                    refreshWorkspace(false);
+                    loadTelegramSettingsForModal();
+                }
+            } catch(e) {}
+        }
+
+        async function loadOpenAISettingsForModal() {
+            const keyInput = document.getElementById('stg-oai-key');
+            const baseInput = document.getElementById('stg-oai-base');
+            const modelsText = document.getElementById('stg-oai-models');
+
+            try {
+                const res = await fetch('/api/openai/settings');
+                if (res.ok) {
+                    const cfg = await res.json();
+                    if (baseInput) baseInput.value = cfg.apiBase || 'https://api.openai.com/v1';
+                    if (modelsText) modelsText.value = cfg.configuredModels || '';
+                    if (keyInput) keyInput.value = '';
+                }
+            } catch(e) {}
+        }
+
+        async function saveOpenAISettingsFromModal(clearKey) {
+            const apiKey = (document.getElementById('stg-oai-key').value || '').trim();
+            const apiBase = (document.getElementById('stg-oai-base').value || '').trim();
+            const models = (document.getElementById('stg-oai-models').value || '').trim();
+
+            try {
+                const res = await fetch('/api/openai/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ apiKey, apiBase, models, clearApiKey: clearKey })
+                });
+                if (!res.ok) throw new Error(await res.text());
+                alert(clearKey ? "API Key OpenAI berhasil dihapus!" : "Setelan Provider OpenAI berhasil disimpan!");
+                loadOpenAISettingsForModal();
+                loadAvailableModels();
+            } catch (err) {
+                alert("Gagal menyimpen setelan OpenAI: " + err.message);
+            }
+        }
+
+        async function loadSecurityKeyForModal() {
+            const keyInput = document.getElementById('stg-sec-active-key');
+            const baseUrlInput = document.getElementById('stg-sec-base-url');
+
+            if (baseUrlInput) {
+                baseUrlInput.value = window.location.origin + '/v1';
+            }
+
+            if (!keyInput) return;
+            try {
+                const res = await fetch('/api/auth/wrapper-key');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.apiKey) {
+                        keyInput.value = data.apiKey;
+                        return;
+                    }
+                }
+                keyInput.value = '';
+            } catch(e) {
+                keyInput.value = '';
+            }
+        }
+
+        function copyBaseURLFromModal() {
+            const baseUrlInput = document.getElementById('stg-sec-base-url');
+            const statusDiv = document.getElementById('stg-sec-key-copy-status');
+            const url = baseUrlInput ? baseUrlInput.value : (window.location.origin + '/v1');
+            
+            navigator.clipboard.writeText(url).then(() => {
+                if (statusDiv) {
+                    statusDiv.innerText = "✓ Base URL (" + url + ") berhasil disalin ke clipboard!";
+                    statusDiv.classList.remove('hidden');
+                    setTimeout(() => statusDiv.classList.add('hidden'), 3000);
+                }
+            }).catch(() => {
+                alert("Gagal menyalin Base URL.");
+            });
+        }
+
+        function toggleShowAPIKeyFromModal() {
+            const keyInput = document.getElementById('stg-sec-active-key');
+            const icon = document.querySelector('#btn-toggle-sec-key i');
+            if (!keyInput) return;
+            isAPIKeyVisible = !isAPIKeyVisible;
+            keyInput.type = isAPIKeyVisible ? 'text' : 'password';
+            if (icon) {
+                icon.setAttribute('data-lucide', isAPIKeyVisible ? 'eye-off' : 'eye');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+
+        function copyAPIKeyFromModal() {
+            const keyInput = document.getElementById('stg-sec-active-key');
+            const statusDiv = document.getElementById('stg-sec-key-copy-status');
+            if (!keyInput) return;
+            navigator.clipboard.writeText(keyInput.value).then(() => {
+                if (statusDiv) {
+                    statusDiv.innerText = "✓ API Key berhasil disalin ke clipboard!";
+                    statusDiv.classList.remove('hidden');
+                    setTimeout(() => statusDiv.classList.add('hidden'), 3000);
+                }
+            }).catch(() => {
+                alert("Gagal menyalin API Key.");
+            });
+        }
+
+        async function regenerateAPIKeyFromModal() {
+            if (!confirm("Apakah Anda yakin ingin memutar/re-generate API Key baru? API Key lama tidak akan berlaku lagi.")) return;
+            const btn = document.getElementById('btn-regenerate-key');
+            const keyInput = document.getElementById('stg-sec-active-key');
+            const statusDiv = document.getElementById('stg-sec-key-copy-status');
+
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/auth/wrapper-key/regenerate', {
+                    method: 'POST'
+                });
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                const newKey = data.apiKey;
+
+                if (keyInput) keyInput.value = newKey;
+                if (statusDiv) {
+                    statusDiv.innerText = "✓ OpenAI Wrapper API Key baru berhasil dibuat dan diaktifkan!";
+                    statusDiv.classList.remove('hidden');
+                    setTimeout(() => statusDiv.classList.add('hidden'), 4000);
+                }
+            } catch (err) {
+                alert("Gagal re-generate API Key: " + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        async function saveSecurityPasswordFromModal() {
+            const pwd = document.getElementById('stg-sec-pwd').value;
+            const confirmPwd = document.getElementById('stg-sec-pwd-confirm').value;
+            const statusDiv = document.getElementById('stg-sec-pwd-status');
+
+            if (!statusDiv) return;
+
+            if (pwd !== confirmPwd) {
+                statusDiv.innerText = "Kata sandi dan konfirmasi sandi tidak cocok!";
+                statusDiv.className = "text-[10px] text-center text-red-400 font-semibold";
+                statusDiv.classList.remove('hidden');
+                return;
+            }
+
+            statusDiv.innerText = "Nyimpen sandi anyar...";
+            statusDiv.className = "text-[10px] text-center text-slate-400";
+            statusDiv.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/auth/pwd/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `new_password=${encodeURIComponent(pwd)}`
+                });
+
+                if (!res.ok) throw new Error(await res.text());
+                statusDiv.innerText = "✓ Kata sandi berhasil diperbarui!";
+                statusDiv.className = "text-[10px] text-center text-emerald-400 font-semibold";
+                document.getElementById('stg-sec-pwd').value = '';
+                document.getElementById('stg-sec-pwd-confirm').value = '';
+                loadSecurityKeyForModal();
+            } catch (err) {
+                statusDiv.innerText = "Gagal nyimpen sandi: " + err.message;
+                statusDiv.className = "text-[10px] text-center text-red-400";
+            }
+        }
+    </script>
 </body>
 </html>

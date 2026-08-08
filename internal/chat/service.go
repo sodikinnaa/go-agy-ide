@@ -90,12 +90,16 @@ type Service struct {
 	mu                sync.Mutex
 	activeChatCmds    map[string]*exec.Cmd
 	activeChatCancels map[string]context.CancelFunc
+	httpClient        *http.Client
 }
 
 func NewService() *Service {
 	return &Service{
 		activeChatCmds:    make(map[string]*exec.Cmd),
 		activeChatCancels: make(map[string]context.CancelFunc),
+		httpClient: &http.Client{
+			Timeout: 120 * time.Second,
+		},
 	}
 }
 
@@ -117,12 +121,15 @@ func (s *Service) getHistoryFilePath() (string, error) {
 }
 
 func (s *Service) isWorkspaceMatch(w1, w2 string) bool {
-	p1 := filepath.Clean(w1)
-	p2 := filepath.Clean(w2)
+	return s.isWorkspaceMatchClean(filepath.Clean(w1), filepath.Clean(w2))
+}
+
+func (s *Service) isWorkspaceMatchClean(p1, p2 string) bool {
 	if p1 == p2 {
 		return true
 	}
-	return strings.HasPrefix(p1, p2+string(filepath.Separator)) || strings.HasPrefix(p2, p1+string(filepath.Separator))
+	sep := string(filepath.Separator)
+	return strings.HasPrefix(p1, p2+sep) || strings.HasPrefix(p2, p1+sep)
 }
 
 // GetHistory reads chat history entries from history.jsonl
@@ -138,8 +145,16 @@ func (s *Service) GetHistory(activeWorkspaceDir string) ([]ChatHistoryItem, erro
 	}
 	defer file.Close()
 
+	cleanActiveWS := filepath.Clean(activeWorkspaceDir)
+
+	type groupInfo struct {
+		title    string
+		earliest int64
+		latest   int64
+	}
+	groups := make(map[string]*groupInfo)
+
 	scanner := bufio.NewScanner(file)
-	var entries []HistoryEntry
 	for scanner.Scan() {
 		lineBytes := scanner.Bytes()
 		if len(lineBytes) == 0 {
@@ -149,25 +164,10 @@ func (s *Service) GetHistory(activeWorkspaceDir string) ([]ChatHistoryItem, erro
 		if err := json.Unmarshal(lineBytes, &entry); err != nil {
 			continue
 		}
-		entries = append(entries, entry)
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Printf("Scanner error reading history list: %v", err)
-	}
-
-	type groupInfo struct {
-		title    string
-		earliest int64
-		latest   int64
-	}
-	groups := make(map[string]*groupInfo)
-
-	for _, entry := range entries {
 		if entry.ConversationID == "" {
 			continue
 		}
-		if !s.isWorkspaceMatch(entry.Workspace, activeWorkspaceDir) {
+		if !s.isWorkspaceMatchClean(filepath.Clean(entry.Workspace), cleanActiveWS) {
 			continue
 		}
 		info, ok := groups[entry.ConversationID]
@@ -188,7 +188,11 @@ func (s *Service) GetHistory(activeWorkspaceDir string) ([]ChatHistoryItem, erro
 		}
 	}
 
-	list := []ChatHistoryItem{}
+	if err := scanner.Err(); err != nil {
+		log.Printf("Scanner error reading history list: %v", err)
+	}
+
+	list := make([]ChatHistoryItem, 0, len(groups))
 	for id, info := range groups {
 		title := info.title
 		if len(title) > 60 {
@@ -201,16 +205,28 @@ func (s *Service) GetHistory(activeWorkspaceDir string) ([]ChatHistoryItem, erro
 		})
 	}
 
-	// Sort descending (newest first)
-	for i := 0; i < len(list); i++ {
-		for j := i + 1; j < len(list); j++ {
-			if list[i].Timestamp < list[j].Timestamp {
-				list[i], list[j] = list[j], list[i]
-			}
-		}
-	}
+	// Sort descending (newest first) efficiently using sort.Slice
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].Timestamp > list[j].Timestamp
+	})
 
 	return list, nil
+}
+
+func getToolMeta(name string) (label, color, icon string) {
+	if strings.Contains(name, "Read") || strings.Contains(name, "view_file") {
+		return "Moco Berkas (Read)", "text-blue-400", "file-text"
+	}
+	if strings.Contains(name, "Edit") || strings.Contains(name, "Write") || strings.Contains(name, "replace_file_content") || strings.Contains(name, "write_to_file") {
+		return "Nulis/Edit Berkas (Write)", "text-yellow-400", "edit-3"
+	}
+	if strings.Contains(name, "Search") || strings.Contains(name, "Grep") || strings.Contains(name, "ListDir") || strings.Contains(name, "list_dir") || strings.Contains(name, "grep_search") {
+		return "Mriksa Folder/Grep (Search)", "text-purple-400", "search"
+	}
+	if strings.Contains(name, "Bash") || strings.Contains(name, "run_command") {
+		return "Perintah Terminal (Bash)", "text-green-400", "terminal"
+	}
+	return "Tool Execution", "text-brand-accent", "play"
 }
 
 // GetHistoryDetail reads detail messages of a conversation from transcript.jsonl
@@ -242,7 +258,9 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, maxCapacity)
 
-	messages := []ChatMessage{}
+	messages := make([]ChatMessage, 0, 32)
+	var sb strings.Builder
+
 	for scanner.Scan() {
 		lineBytes := scanner.Bytes()
 		if len(lineBytes) == 0 {
@@ -261,7 +279,7 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 				Timestamp: line.CreatedAt,
 			})
 		} else if line.Type == "PLANNER_RESPONSE" {
-			var sb strings.Builder
+			sb.Reset()
 
 			if line.Thinking != "" {
 				sb.WriteString(`<details class="bg-brand-dark/40 border border-brand-border rounded-xl p-3 my-2 text-xs">
@@ -277,28 +295,7 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 			}
 
 			for _, tc := range line.ToolCalls {
-				toolLabel := "Tool Execution"
-				iconColor := "text-brand-accent"
-				iconName := "play"
-
-				if strings.Contains(tc.Name, "Read") || strings.Contains(tc.Name, "view_file") {
-					toolLabel = "Moco Berkas (Read)"
-					iconColor = "text-blue-400"
-					iconName = "file-text"
-				} else if strings.Contains(tc.Name, "Edit") || strings.Contains(tc.Name, "Write") || strings.Contains(tc.Name, "replace_file_content") || strings.Contains(tc.Name, "write_to_file") {
-					toolLabel = "Nulis/Edit Berkas (Write)"
-					iconColor = "text-yellow-400"
-					iconName = "edit-3"
-				} else if strings.Contains(tc.Name, "Search") || strings.Contains(tc.Name, "Grep") || strings.Contains(tc.Name, "ListDir") || strings.Contains(tc.Name, "list_dir") || strings.Contains(tc.Name, "grep_search") {
-					toolLabel = "Mriksa Folder/Grep (Search)"
-					iconColor = "text-purple-400"
-					iconName = "search"
-				} else if strings.Contains(tc.Name, "Bash") || strings.Contains(tc.Name, "run_command") {
-					toolLabel = "Perintah Terminal (Bash)"
-					iconColor = "text-green-400"
-					iconName = "terminal"
-				}
-
+				toolLabel, iconColor, iconName := getToolMeta(tc.Name)
 				argsBytes, _ := json.MarshalIndent(tc.Arguments, "", "  ")
 
 				sb.WriteString(fmt.Sprintf(`<details class="bg-brand-dark/60 border border-brand-border rounded-xl p-3 my-3 text-xs shadow-inner">
@@ -342,6 +339,12 @@ func (s *Service) GetHistoryDetail(id string) (ChatHistoryDetail, error) {
 	}, nil
 }
 
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[a-zA-Z0-9]`)
+
+func stripANSI(str string) string {
+	return ansiRegex.ReplaceAllString(str, "")
+}
+
 // StartChat spawns a chat command and returns its stdout pipe
 func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspaceDir string) (*exec.Cmd, io.ReadCloser, error) {
 	if strings.HasPrefix(req.Model, "openai/") {
@@ -351,12 +354,22 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 
 	args := []string{"--add-dir", activeWorkspaceDir}
 	if req.Model != "" {
-		modelArg := strings.TrimSpace(req.Model)
+		modelArg := stripANSI(req.Model)
+		modelArg = strings.TrimSpace(modelArg)
 		fields := strings.Fields(modelArg)
 		if len(fields) > 0 {
 			modelArg = fields[0]
 		}
-		args = append(args, "--model", modelArg)
+		modelArg = strings.Map(func(r rune) rune {
+			if r < 32 || r == 127 {
+				return -1
+			}
+			return r
+		}, modelArg)
+		modelArg = strings.TrimSpace(modelArg)
+		if modelArg != "" {
+			args = append(args, "--model", modelArg)
+		}
 	}
 	args = append(args, "--print", req.Prompt, "--dangerously-skip-permissions")
 
@@ -415,19 +428,21 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 	return cmd, stdoutPipe, nil
 }
 
-// CleanupChat removes chat command reference from active list
+// CleanupChat removes chat command reference from active list and cancels context to prevent leaks
 func (s *Service) CleanupChat(convID string, cmd *exec.Cmd) {
 	if convID == "" {
 		return
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if cmd != nil && s.activeChatCmds[convID] == cmd {
 		delete(s.activeChatCmds, convID)
 	}
-	if _, exists := s.activeChatCancels[convID]; exists {
+	if cancel, exists := s.activeChatCancels[convID]; exists {
+		cancel()
 		delete(s.activeChatCancels, convID)
 	}
-	s.mu.Unlock()
 }
 
 // StopChat terminates an active chat command process
@@ -517,6 +532,17 @@ func agyCompatibilitySystemPrompt(activeWorkspaceDir string) string {
 	return sb.String()
 }
 
+var skippedSnapshotDirs = map[string]bool{
+	".git": true, ".zed": true, "node_modules": true, "vendor": true, "dist": true, "build": true,
+	".next": true, ".nuxt": true, "coverage": true, "tmp": true, "temp": true, ".idea": true, ".vscode": true,
+}
+
+var skippedFileExts = map[string]bool{
+	".exe": true, ".dll": true, ".so": true, ".zip": true, ".png": true, ".jpg": true,
+	".jpeg": true, ".gif": true, ".ico": true, ".pdf": true, ".bin": true, ".tar": true,
+	".gz": true, ".7z": true, ".iso": true, ".class": true, ".o": true, ".a": true,
+}
+
 func buildWorkspaceSnapshot(activeWorkspaceDir string) string {
 	if strings.TrimSpace(activeWorkspaceDir) == "" {
 		return "Workspace snapshot unavailable: active workspace is empty."
@@ -527,33 +553,34 @@ func buildWorkspaceSnapshot(activeWorkspaceDir string) string {
 		return fmt.Sprintf("Workspace snapshot unavailable for %q: %v", activeWorkspaceDir, err)
 	}
 
-	skippedDirs := map[string]bool{
-		".git": true, ".zed": true, "node_modules": true, "vendor": true, "dist": true, "build": true,
-		".next": true, ".nuxt": true, "coverage": true, "tmp": true, "temp": true,
-	}
+	cleanWorkspace := filepath.Clean(activeWorkspaceDir)
 	const maxFiles = 160
-	var files []string
+	files := make([]string, 0, maxFiles)
 
-	_ = filepath.WalkDir(activeWorkspaceDir, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(cleanWorkspace, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		name := d.Name()
 		if d.IsDir() {
-			if path != activeWorkspaceDir && skippedDirs[name] {
+			if path != cleanWorkspace && (strings.HasPrefix(name, ".") || skippedSnapshotDirs[name]) {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if strings.HasPrefix(name, ".") || strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".dll") || strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".zip") {
+		if strings.HasPrefix(name, ".") {
 			return nil
 		}
-		rel, relErr := filepath.Rel(activeWorkspaceDir, path)
+		ext := strings.ToLower(filepath.Ext(name))
+		if skippedFileExts[ext] {
+			return nil
+		}
+		rel, relErr := filepath.Rel(cleanWorkspace, path)
 		if relErr == nil {
 			files = append(files, filepath.ToSlash(rel))
 		}
 		if len(files) >= maxFiles {
-			return io.EOF
+			return filepath.SkipAll
 		}
 		return nil
 	})
@@ -561,7 +588,12 @@ func buildWorkspaceSnapshot(activeWorkspaceDir string) string {
 	if len(files) == 0 {
 		return "Workspace snapshot: no visible source files found."
 	}
-	return "Workspace file snapshot (read-only context, first files only):\n- " + strings.Join(files, "\n- ")
+
+	var sb strings.Builder
+	sb.Grow(60 + len(files)*40)
+	sb.WriteString("Workspace file snapshot (read-only context, first files only):\n- ")
+	sb.WriteString(strings.Join(files, "\n- "))
+	return sb.String()
 }
 
 func cleanWorkspaceRelPath(pathParam string) string {
@@ -793,31 +825,43 @@ func (s *Service) executeOpenAITool(ctx context.Context, activeWorkspaceDir stri
 			resultBody = fail(err)
 			break
 		}
-		data, err := os.ReadFile(absPath)
+		f, err := os.Open(absPath)
 		if err != nil {
 			resultBody = fail(err)
 			break
 		}
-		content := string(data)
-		lines := strings.Split(content, "\n")
 		startLine := argInt("start_line")
 		endLine := argInt("end_line")
 		if startLine <= 0 {
 			startLine = 1
 		}
-		if endLine <= 0 || endLine > len(lines) {
-			endLine = len(lines)
+		if endLine <= 0 {
+			endLine = 2000000000
 		}
 		if startLine > endLine {
+			f.Close()
 			resultBody = fmt.Sprintf("File: %s\n(no lines in requested range)", rel)
 			break
 		}
+
+		scanner := bufio.NewScanner(f)
 		var sb strings.Builder
 		sb.WriteString("File: " + rel + "\n")
-		for i := startLine; i <= endLine && i <= startLine+399; i++ {
-			sb.WriteString(fmt.Sprintf("%6d\t%s\n", i, lines[i-1]))
+		lineNum := 0
+		written := 0
+		for scanner.Scan() {
+			lineNum++
+			if lineNum < startLine {
+				continue
+			}
+			if lineNum > endLine || written >= 400 {
+				break
+			}
+			sb.WriteString(fmt.Sprintf("%6d\t%s\n", lineNum, scanner.Text()))
+			written++
 		}
-		if endLine-startLine >= 400 {
+		f.Close()
+		if written >= 400 {
 			sb.WriteString("... truncated after 400 lines\n")
 		}
 		resultBody = sb.String()
@@ -888,27 +932,36 @@ func (s *Service) executeOpenAITool(ctx context.Context, activeWorkspaceDir stri
 			}
 			name := d.Name()
 			if d.IsDir() {
-				if strings.HasPrefix(name, ".") || name == "node_modules" || name == "vendor" || name == "dist" || name == "build" {
+				if strings.HasPrefix(name, ".") || skippedSnapshotDirs[name] {
 					return filepath.SkipDir
 				}
 				return nil
 			}
-			if strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".dll") || strings.HasSuffix(name, ".zip") || strings.HasSuffix(name, ".png") || strings.HasSuffix(name, ".jpg") {
+			ext := strings.ToLower(filepath.Ext(name))
+			if skippedFileExts[ext] {
 				return nil
 			}
-			data, readErr := os.ReadFile(path)
-			if readErr != nil || bytes.Contains(data, []byte{0}) {
+			f, readErr := os.Open(path)
+			if readErr != nil {
 				return nil
 			}
 			rel, _ := filepath.Rel(activeWorkspaceDir, path)
-			for idx, line := range strings.Split(string(data), "\n") {
-				if re.MatchString(line) {
-					matches = append(matches, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(rel), idx+1, strings.TrimSpace(line)))
+			scanner := bufio.NewScanner(f)
+			lineIdx := 0
+			for scanner.Scan() {
+				lineIdx++
+				lineBytes := scanner.Bytes()
+				if lineIdx == 1 && bytes.Contains(lineBytes, []byte{0}) {
+					break
+				}
+				if re.Match(lineBytes) {
+					matches = append(matches, fmt.Sprintf("%s:%d: %s", filepath.ToSlash(rel), lineIdx, strings.TrimSpace(scanner.Text())))
 					if len(matches) >= 80 {
 						break
 					}
 				}
 			}
+			f.Close()
 			return nil
 		})
 		if len(matches) == 0 {
@@ -1067,7 +1120,6 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 	s.mu.Unlock()
 
 	pr, pw := io.Pipe()
-	client := &http.Client{}
 	url := strings.TrimSuffix(apiBase, "/") + "/chat/completions"
 
 	go func() {
@@ -1122,7 +1174,7 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
 
-			resp, err := client.Do(httpReq)
+			resp, err := s.httpClient.Do(httpReq)
 			if err != nil {
 				return openAIResponse{}, err
 			}
