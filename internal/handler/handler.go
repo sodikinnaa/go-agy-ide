@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.7.1"
+const AppVersion = "v1.7.2"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -1232,8 +1232,9 @@ func (h *Handler) HandleTerminalStream(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
 
 	// Ensure the session is running
 	err := h.terminalSvc.StartSession(h.workspaceSvc.ActiveWorkspaceDir())
@@ -1254,12 +1255,19 @@ func (h *Handler) HandleTerminalStream(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		select {
-		case data := <-ch:
-			_, _ = w.Write(data)
+		case data, ok := <-ch:
+			if !ok {
+				return
+			}
+			if _, err := w.Write(data); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-ticker.C:
 			// keep alive ping with non-empty NUL byte to keep proxy alive
-			_, _ = w.Write([]byte{0})
+			if _, err := w.Write([]byte{0}); err != nil {
+				return
+			}
 			flusher.Flush()
 		case <-r.Context().Done():
 			return
@@ -1281,6 +1289,9 @@ func (h *Handler) HandleTerminalInput(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// Ensure terminal session is started if not running
+	_ = h.terminalSvc.StartSession(h.workspaceSvc.ActiveWorkspaceDir())
 
 	err := h.terminalSvc.WriteInput(req.Data)
 	if err != nil {
@@ -1351,6 +1362,20 @@ func (h *Handler) HandleTelegramConfigSave(w http.ResponseWriter, r *http.Reques
 func (h *Handler) HandleTerminalResize(w http.ResponseWriter, r *http.Request) {
 	colsStr := r.URL.Query().Get("cols")
 	rowsStr := r.URL.Query().Get("rows")
+
+	if colsStr == "" || rowsStr == "" {
+		if r.Method == http.MethodPost && strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+			var req struct {
+				Cols int `json:"cols"`
+				Rows int `json:"rows"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+				colsStr = strconv.Itoa(req.Cols)
+				rowsStr = strconv.Itoa(req.Rows)
+			}
+		}
+	}
+
 	cols, _ := strconv.Atoi(colsStr)
 	rows, _ := strconv.Atoi(rowsStr)
 	if cols > 0 && rows > 0 {

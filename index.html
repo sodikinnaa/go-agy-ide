@@ -393,7 +393,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.7.1</span>
+                    <span class="text-[10px] text-slate-400">v1.7.2</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -2722,10 +2722,30 @@
         }
 
         let fitAddon;
+        let isTerminalStreaming = false;
+        let inputQueue = [];
+        let isSendingInput = false;
+
+        function getCharDimensions() {
+            if (term && term._core && term._core._renderService && term._core._renderService.dimensions) {
+                const dims = term._core._renderService.dimensions;
+                if (dims.actualCellWidth && dims.actualCellHeight) {
+                    return { width: dims.actualCellWidth, height: dims.actualCellHeight };
+                }
+            }
+            return { width: 8, height: 16 };
+        }
 
         function initInteractiveTerminal() {
             const container = document.getElementById('terminal-container');
             if (!container) return;
+
+            if (term) {
+                try { term.dispose(); } catch(e) {}
+                term = null;
+            }
+
+            container.innerHTML = '';
 
             const isMobile = window.innerWidth < 768;
             term = new Terminal({
@@ -2757,9 +2777,19 @@
                 }
             });
 
-            if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
-                fitAddon = new FitAddon.FitAddon();
-                term.loadAddon(fitAddon);
+            if (typeof FitAddon !== 'undefined') {
+                try {
+                    if (typeof FitAddon.FitAddon === 'function') {
+                        fitAddon = new FitAddon.FitAddon();
+                    } else if (typeof FitAddon === 'function') {
+                        fitAddon = new FitAddon();
+                    }
+                    if (fitAddon) {
+                        term.loadAddon(fitAddon);
+                    }
+                } catch (e) {
+                    console.warn('Could not initialize FitAddon:', e);
+                }
             }
 
             term.open(container);
@@ -2779,23 +2809,17 @@
         function resizeTerminalToFit() {
             if (!term) return;
             const container = document.getElementById('terminal-container');
-            if (!container || container.offsetParent === null) return;
+            if (!container || container.offsetParent === null || container.clientWidth === 0 || container.clientHeight === 0) return;
 
             if (fitAddon) {
                 try {
                     fitAddon.fit();
                 } catch (e) {
                     console.error('FitAddon error:', e);
+                    fallbackResize(container);
                 }
             } else {
-                const dims = getCharDimensions();
-                const availableWidth = container.clientWidth - 16;
-                const availableHeight = container.clientHeight - 16;
-                const cols = Math.floor(availableWidth / dims.width);
-                const rows = Math.floor(availableHeight / dims.height);
-                if (cols > 10 && rows > 3) {
-                    term.resize(cols, rows);
-                }
+                fallbackResize(container);
             }
 
             if (term.cols > 10 && term.rows > 3) {
@@ -2803,42 +2827,88 @@
             }
         }
 
+        function fallbackResize(container) {
+            if (!term) return;
+            const dims = getCharDimensions();
+            const availableWidth = container.clientWidth - 16;
+            const availableHeight = container.clientHeight - 16;
+            const cols = Math.floor(availableWidth / dims.width);
+            const rows = Math.floor(availableHeight / dims.height);
+            if (cols > 10 && rows > 3) {
+                term.resize(cols, rows);
+            }
+        }
+
         async function startTerminalStreaming() {
+            if (isTerminalStreaming) return;
+            isTerminalStreaming = true;
+
             try {
+                if (terminalStreamReader) {
+                    try { await terminalStreamReader.cancel(); } catch(e) {}
+                    terminalStreamReader = null;
+                }
+
                 const response = await fetch('/api/terminal/stream');
-                if (!response.ok) throw new Error('Terminal stream failed to start');
+                if (!response.ok) throw new Error('Terminal stream failed to start (' + response.status + ')');
                 
                 terminalStreamReader = response.body.getReader();
-                const decoder = new TextDecoder();
+                const decoder = new TextDecoder('utf-8', { fatal: false });
                 
                 while (true) {
                     const { done, value } = await terminalStreamReader.read();
                     if (done) break;
-                    const text = decoder.decode(value);
-                    if (text) {
-                        const cleanText = text.replace(/\x00/g, '');
-                        if (cleanText) {
-                            term.write(cleanText);
+                    if (value && value.length > 0) {
+                        const text = decoder.decode(value, { stream: true });
+                        if (text) {
+                            const cleanText = text.replace(/\x00/g, '');
+                            if (cleanText) {
+                                term.write(cleanText);
+                            }
                         }
                     }
                 }
             } catch (err) {
-                term.write('\r\n\x1b[31m[ERROR] Gagal nyambung menyang terminal: ' + err.message + '\x1b[0m\r\n');
-                // Retry connection in 3 seconds
-                setTimeout(startTerminalStreaming, 3000);
+                if (term) {
+                    term.write('\r\n\x1b[31m[ERROR] Gagal nyambung menyang terminal: ' + err.message + '\x1b[0m\r\n');
+                }
+            } finally {
+                terminalStreamReader = null;
+                isTerminalStreaming = false;
+                // Auto reconnect after 3 seconds if terminal active
+                if (term) {
+                    setTimeout(startTerminalStreaming, 3000);
+                }
             }
         }
 
-        async function sendTerminalInput(data) {
+        async function processInputQueue() {
+            if (isSendingInput || inputQueue.length === 0) return;
+            isSendingInput = true;
+
+            const batchData = inputQueue.join('');
+            inputQueue = [];
+
             try {
                 await fetch('/api/terminal/input', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: data })
+                    body: JSON.stringify({ data: batchData })
                 });
             } catch (err) {
                 console.error('Failed to send terminal input:', err);
+            } finally {
+                isSendingInput = false;
+                if (inputQueue.length > 0) {
+                    processInputQueue();
+                }
             }
+        }
+
+        function sendTerminalInput(data) {
+            if (!data) return;
+            inputQueue.push(data);
+            processInputQueue();
         }
 
         function sendTerminalKey(key) {
@@ -3864,7 +3934,7 @@
 
             if (!releases || !Array.isArray(releases) || releases.length === 0) {
                 releases = [
-                    { tag_name: 'v1.7.1', prerelease: false },
+                    { tag_name: 'v1.7.2', prerelease: false },
                     { tag_name: 'v1.6.9', prerelease: false },
                     { tag_name: 'v1.6.8', prerelease: false }
                 ];
@@ -3887,8 +3957,8 @@
             const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
             const latestStable = stableTags.sort(compareTags).pop();
             const latestTesting = testingTags.sort(compareTags).pop();
-            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.1');
-            const current = "v1.7.1";
+            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.2');
+            const current = "v1.7.2";
 
             if (verDisplay) verDisplay.innerText = latest;
             if (releaseSelect) {
@@ -4490,7 +4560,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.1</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.2</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -147,6 +148,18 @@ func (s *Service) StartSession(workspaceDir string) error {
 		return nil
 	}
 
+	if workspaceDir == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			workspaceDir = home
+		} else {
+			workspaceDir = "."
+		}
+	} else if _, err := os.Stat(workspaceDir); err != nil {
+		if home, err := os.UserHomeDir(); err == nil {
+			workspaceDir = home
+		}
+	}
+
 	env := buildTerminalEnv()
 
 	var cmd *exec.Cmd
@@ -217,6 +230,10 @@ func (s *Service) StartSession(workspaceDir string) error {
 		}
 		if s.stdout != nil && s.stdout != s.ptyFile {
 			_ = s.stdout.Close()
+		}
+		if s.cmd != nil && s.cmd.Process != nil {
+			_ = s.cmd.Process.Kill()
+			_ = s.cmd.Wait()
 		}
 		s.mutex.Unlock()
 	}()
@@ -299,6 +316,9 @@ func (s *Service) WriteInput(data string) error {
 	}
 
 	_, err := s.stdin.Write([]byte(data))
+	if err != nil {
+		s.isRunning = false
+	}
 	return err
 }
 
@@ -344,7 +364,7 @@ func (s *Service) Broadcast(data []byte) {
 		if len(s.history) < checkLen {
 			checkLen = len(s.history)
 		}
-		if idx := strings.IndexByte(string(s.history[:checkLen]), '\n'); idx >= 0 && idx < len(s.history)-1 {
+		if idx := bytes.IndexByte(s.history[:checkLen], '\n'); idx >= 0 && idx < len(s.history)-1 {
 			s.history = s.history[idx+1:]
 		}
 	}
