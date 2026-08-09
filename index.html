@@ -99,6 +99,7 @@
     <!-- xterm.js for interactive terminal -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
 
     <style>
         /* Comprehensive Fallback Utility & Layout CSS */
@@ -209,8 +210,26 @@
         .CodeMirror {
             height: 100% !important;
             font-family: 'Fira Code', monospace;
-            font-size: 14px;
-            background: #111326 !important;
+            font-size: 13px;
+            background: #090a15 !important;
+        }
+
+        /* xterm.js layout & sizing fixes */
+        #terminal-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+        }
+        #terminal-container .terminal {
+            height: 100% !important;
+            width: 100% !important;
+            padding: 4px;
+        }
+        #terminal-container .xterm-viewport {
+            height: 100% !important;
+            width: 100% !important;
+            overflow-y: auto !important;
         }
         .CodeMirror-gutters {
             background: #111326 !important;
@@ -374,7 +393,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.7.0</span>
+                    <span class="text-[10px] text-slate-400">v1.7.1</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -2702,6 +2721,8 @@
             setTimeout(resizeTerminalToFit, 100);
         }
 
+        let fitAddon;
+
         function initInteractiveTerminal() {
             const container = document.getElementById('terminal-container');
             if (!container) return;
@@ -2733,10 +2754,14 @@
                     brightMagenta: '#e879f9',
                     brightCyan: '#22d3ee',
                     brightWhite: '#ffffff'
-                },
-                rows: isMobile ? 18 : 24,
-                cols: 80
+                }
             });
+
+            if (typeof FitAddon !== 'undefined' && FitAddon.FitAddon) {
+                fitAddon = new FitAddon.FitAddon();
+                term.loadAddon(fitAddon);
+            }
+
             term.open(container);
             
             // Handle keypresses/inputs inside xterm.js
@@ -2748,46 +2773,33 @@
             startTerminalStreaming();
 
             // Resize to fit container
-            setTimeout(resizeTerminalToFit, 200);
-        }
-
-        function getCharDimensions() {
-            const temp = document.createElement('span');
-            temp.style.fontFamily = 'Fira Code, monospace';
-            temp.style.fontSize = '11px';
-            temp.style.visibility = 'hidden';
-            temp.style.position = 'absolute';
-            temp.style.whiteSpace = 'nowrap';
-            temp.innerText = 'XXXXXXXXXXXXXXXXXXXX'; // 20 chars
-            document.body.appendChild(temp);
-            
-            const charWidth = temp.offsetWidth / 20;
-            const charHeight = temp.offsetHeight;
-            
-            document.body.removeChild(temp);
-            
-            return {
-                width: charWidth || 6.6,
-                height: charHeight || 14
-            };
+            setTimeout(resizeTerminalToFit, 100);
         }
 
         function resizeTerminalToFit() {
             if (!term) return;
             const container = document.getElementById('terminal-container');
-            if (!container) return;
+            if (!container || container.offsetParent === null) return;
 
-            const dims = getCharDimensions();
-            // Subtract container padding (p-2 = 8px each side = 16px)
-            const availableWidth = container.clientWidth - 16;
-            const availableHeight = container.clientHeight - 16;
+            if (fitAddon) {
+                try {
+                    fitAddon.fit();
+                } catch (e) {
+                    console.error('FitAddon error:', e);
+                }
+            } else {
+                const dims = getCharDimensions();
+                const availableWidth = container.clientWidth - 16;
+                const availableHeight = container.clientHeight - 16;
+                const cols = Math.floor(availableWidth / dims.width);
+                const rows = Math.floor(availableHeight / dims.height);
+                if (cols > 10 && rows > 3) {
+                    term.resize(cols, rows);
+                }
+            }
 
-            const cols = Math.floor(availableWidth / dims.width);
-            const rows = Math.floor(availableHeight / dims.height);
-
-            if (cols > 10 && rows > 3) {
-                term.resize(cols, rows);
-                fetch(`/api/terminal/resize?cols=${cols}&rows=${rows}`).catch(() => {});
+            if (term.cols > 10 && term.rows > 3) {
+                fetch(`/api/terminal/resize?cols=${term.cols}&rows=${term.rows}`).catch(() => {});
             }
         }
 
@@ -3852,7 +3864,7 @@
 
             if (!releases || !Array.isArray(releases) || releases.length === 0) {
                 releases = [
-                    { tag_name: 'v1.7.0', prerelease: false },
+                    { tag_name: 'v1.7.1', prerelease: false },
                     { tag_name: 'v1.6.9', prerelease: false },
                     { tag_name: 'v1.6.8', prerelease: false }
                 ];
@@ -3875,8 +3887,8 @@
             const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
             const latestStable = stableTags.sort(compareTags).pop();
             const latestTesting = testingTags.sort(compareTags).pop();
-            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.0');
-            const current = "v1.7.0";
+            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.1');
+            const current = "v1.7.1";
 
             if (verDisplay) verDisplay.innerText = latest;
             if (releaseSelect) {
@@ -4478,7 +4490,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.0</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.1</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>
