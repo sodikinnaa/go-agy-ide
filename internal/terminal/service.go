@@ -17,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -277,7 +276,7 @@ func (ts *TerminalSession) Start(workspaceDir string) error {
 		cmd = exec.Command(shell, "-i")
 		cmd.Dir = workspaceDir
 		cmd.Env = env
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		setSysProcAttrSetsid(cmd)
 
 		// Allocate real PTY master/slave pair using creack/pty
 		ptmx, err = pty.Start(cmd)
@@ -356,7 +355,7 @@ func startFallbackUnixSession(workspaceDir string, env []string) (*exec.Cmd, io.
 
 	cmd.Dir = workspaceDir
 	cmd.Env = env
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	setSysProcAttrSetsid(cmd)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -489,13 +488,8 @@ func (ts *TerminalSession) Kill() {
 	if ts.isRunning && ts.cmd != nil && ts.cmd.Process != nil {
 		pid := ts.cmd.Process.Pid
 		if pid > 0 {
-			if runtime.GOOS != "windows" {
-				if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
-					_ = ts.cmd.Process.Kill()
-				}
-			} else {
-				_ = ts.cmd.Process.Kill()
-			}
+			killProcessGroup(pid)
+			_ = ts.cmd.Process.Kill()
 		}
 	}
 	if ts.ptyFile != nil {
