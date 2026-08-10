@@ -26,6 +26,8 @@ type ChatRequest struct {
 	Model        string `json:"model"`
 	Continue     bool   `json:"continue"`
 	Conversation string `json:"conversation"`
+	SkipAddDir   bool   `json:"skip_add_dir,omitempty"`
+	IsPure       bool   `json:"is_pure,omitempty"`
 }
 
 type HistoryEntry struct {
@@ -352,7 +354,10 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 		return nil, reader, err
 	}
 
-	args := []string{"--add-dir", activeWorkspaceDir}
+	var args []string
+	if !req.SkipAddDir && !req.IsPure {
+		args = append(args, "--add-dir", activeWorkspaceDir)
+	}
 	if req.Model != "" {
 		modelArg := stripANSI(req.Model)
 		modelArg = strings.TrimSpace(modelArg)
@@ -385,7 +390,7 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 
 	cmd := exec.CommandContext(cmdCtx, auth.FindAgyPath(), args...)
 	cmd.Dir = activeWorkspaceDir
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "BROWSER=false", "DISPLAY=")
 
 	convID := req.Conversation
 	if convID != "" {
@@ -1106,10 +1111,13 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 		} `json:"error"`
 	}
 
-	messages := []openAIMessage{
-		{Role: "system", Content: agyCompatibilitySystemPrompt(activeWorkspaceDir)},
-		{Role: "system", Content: "You have AGY-like tools available. Use tools whenever the user asks to inspect, create, edit, test, or run code in the workspace. Do not merely provide code snippets when a file change is requested; call write_to_file or replace_file_content. After tool calls, summarize exactly what changed."},
-		{Role: "system", Content: buildWorkspaceSnapshot(activeWorkspaceDir)},
+	var messages []openAIMessage
+	if !req.IsPure {
+		messages = append(messages,
+			openAIMessage{Role: "system", Content: agyCompatibilitySystemPrompt(activeWorkspaceDir)},
+			openAIMessage{Role: "system", Content: "You have AGY-like tools available. Use tools whenever the user asks to inspect, create, edit, test, or run code in the workspace. Do not merely provide code snippets when a file change is requested; call write_to_file or replace_file_content. After tool calls, summarize exactly what changed."},
+			openAIMessage{Role: "system", Content: buildWorkspaceSnapshot(activeWorkspaceDir)},
+		)
 	}
 	messages = append(messages, s.getOpenAITranscriptMessages(req.Conversation)...)
 	messages = append(messages, openAIMessage{Role: "user", Content: req.Prompt})
@@ -1156,13 +1164,16 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 		}
 
 		callModel := func() (openAIResponse, error) {
-			reqBody, err := json.Marshal(map[string]any{
-				"model":       modelName,
-				"messages":    messages,
-				"tools":       openAIToolDefinitions(),
-				"tool_choice": "auto",
-				"stream":      false,
-			})
+			bodyMap := map[string]any{
+				"model":    modelName,
+				"messages": messages,
+				"stream":   false,
+			}
+			if !req.IsPure {
+				bodyMap["tools"] = openAIToolDefinitions()
+				bodyMap["tool_choice"] = "auto"
+			}
+			reqBody, err := json.Marshal(bodyMap)
 			if err != nil {
 				return openAIResponse{}, err
 			}

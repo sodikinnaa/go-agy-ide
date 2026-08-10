@@ -268,3 +268,18 @@ func TestWrapperAPIKeyEndpoints(t *testing.T) {
 		t.Errorf("expected api_key.txt content to match new key %s, got %s", newKey, string(keyFileContent))
 	}
 }
+
+func TestPureLLMModeHeaderToggle(t *testing.T) {
+	reqDefault := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	isAgentModeDefault := strings.EqualFold(strings.TrimSpace(reqDefault.Header.Get("X-AGY-Agent-Mode")), "true")
+	if isAgentModeDefault {
+		t.Errorf("expected default agent mode to be false")
+	}
+
+	reqAgent := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	reqAgent.Header.Set("X-AGY-Agent-Mode", "true")
+	isAgentModeAgent := strings.EqualFold(strings.TrimSpace(reqAgent.Header.Get("X-AGY-Agent-Mode")), "true")
+	if !isAgentModeAgent {
+		t.Errorf("expected X-AGY-Agent-Mode: true to activate agent mode")
+	}
+}

@@ -830,11 +830,9 @@ func TestStartGoogleAuthAndSubmitGoogleAuthCode(t *testing.T) {
 	backupVal, backupErr := keyring.Get("gemini", "antigravity")
 
 	defer func() {
-		// Restore everything in deferred cleanup
-		if backupErr == nil && !strings.Contains(backupVal, "mock-") {
+		// Restore keyring if it was backed up
+		if backupErr == nil && backupVal != "" && !strings.Contains(backupVal, "mock-") {
 			_ = keyring.Set("gemini", "antigravity", backupVal)
-		} else {
-			_ = keyring.Delete("gemini", "antigravity")
 		}
 		os.Setenv("HOME", originalHome)
 		os.Setenv("USERPROFILE", originalUserProfile)

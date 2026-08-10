@@ -393,7 +393,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.7.2</span>
+                    <span class="text-[10px] text-slate-400">v1.7.3</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -540,12 +540,18 @@
             
             <!-- Terminal Panel -->
             <section id="panel-terminal" class="flex-1 flex flex-col overflow-hidden relative border-r border-brand-border pt-1">
-            <div class="px-3 py-2 border-b border-brand-border flex items-center justify-between shrink-0 bg-brand-dark/80" id="terminal-header">
-                <div class="flex items-center space-x-2">
-                    <i data-lucide="terminal" class="w-4 h-4 text-brand-accent"></i>
-                    <span class="text-xs font-bold text-slate-300 tracking-wider uppercase" id="terminal-title">Terminal Console</span>
+            <div class="px-2.5 py-1.5 border-b border-brand-border flex items-center justify-between shrink-0 bg-brand-dark/90 gap-2 select-none" id="terminal-header">
+                <div class="flex items-center space-x-1.5 overflow-x-auto scrollbar-hide flex-1 min-w-0" id="terminal-tabs-wrapper">
+                    <i data-lucide="terminal" class="w-4 h-4 text-brand-accent shrink-0 ml-1"></i>
+                    <!-- Terminal Tab Bar -->
+                    <div id="terminal-tab-list" class="flex items-center space-x-1 overflow-x-auto scrollbar-hide py-0.5 min-w-0">
+                        <!-- Dynamic terminal tabs (Terminal 1, Terminal 2, etc.) rendered here -->
+                    </div>
+                    <button onclick="addTerminalTab()" id="btn-add-terminal-tab" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-brand-accent rounded transition shrink-0 flex items-center justify-center" title="Tambah Tab Terminal Baru (+)">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    </button>
                 </div>
-                <div class="flex items-center space-x-1" id="terminal-actions">
+                <div class="flex items-center space-x-1 shrink-0" id="terminal-actions">
                     <button onclick="toggleMaximizeTerminal()" id="btn-maximize-terminal" class="p-1 hover:bg-brand-panel text-slate-400 hover:text-white rounded transition" title="Layar Kebak Terminal (Maximize)">
                         <i data-lucide="maximize-2" class="w-4 h-4"></i>
                     </button>
@@ -565,16 +571,40 @@
             
             <!-- Terminal Helper Buttons (Mobile & Android Touch Shortcuts) -->
             <div id="terminal-shortcuts" class="px-2 py-1.5 bg-brand-dark border-t border-brand-border flex items-center overflow-x-auto shrink-0 select-none gap-1.5 scrollbar-hide">
-                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+C</button>
+                <!-- Sticky Modifiers -->
+                <button id="btn-term-ctrl" onclick="sendTerminalKey('Ctrl')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Toggle Sticky Ctrl">Ctrl</button>
+                <button id="btn-term-alt" onclick="sendTerminalKey('Alt')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Toggle Sticky Alt">Alt</button>
+
+                <!-- Control Shortcuts -->
+                <button onclick="sendTerminalKey('Ctrl+C')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Interrupt (Ctrl+C)">Ctrl+C</button>
+                <button onclick="sendTerminalKey('Ctrl+L')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Clear Screen (Ctrl+L)">Ctrl+L</button>
+                <button onclick="sendTerminalKey('Ctrl+A')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Awal Baris (Ctrl+A)">Ctrl+A</button>
+                <button onclick="sendTerminalKey('Ctrl+E')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Pungkas Baris (Ctrl+E)">Ctrl+E</button>
                 <button onclick="sendTerminalKey('Tab')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Tab</button>
                 <button onclick="sendTerminalKey('Esc')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Esc</button>
+
+                <!-- Navigation -->
                 <button onclick="sendTerminalKey('Up')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▲</button>
                 <button onclick="sendTerminalKey('Down')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▼</button>
                 <button onclick="sendTerminalKey('Left')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">◀</button>
                 <button onclick="sendTerminalKey('Right')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">▶</button>
+
+                <!-- Mobile Special Characters -->
+                <button onclick="sendTerminalKey('/')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">/</button>
+                <button onclick="sendTerminalKey('\\')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">\</button>
+                <button onclick="sendTerminalKey('~')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">~</button>
+                <button onclick="sendTerminalKey('|')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">|</button>
+                <button onclick="sendTerminalKey('_')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">_</button>
+                <button onclick="sendTerminalKey(':')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">:</button>
+                <button onclick="sendTerminalKey('-')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">-</button>
+                <button onclick="sendTerminalKey('?')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">?</button>
+                <button onclick="sendTerminalKey('&quot;')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">&quot;</button>
+                <button onclick="sendTerminalKey(&#39;&#39;)" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">&#39;</button>
+
+                <!-- Additional Ctrl Shortcuts & Enter -->
+                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="EOF / Exit (Ctrl+D)">Ctrl+D</button>
+                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0" title="Suspend (Ctrl+Z)">Ctrl+Z</button>
                 <button onclick="sendTerminalKey('Enter')" class="px-2.5 py-1 bg-brand-accent hover:bg-purple-700 active:scale-95 border border-brand-border text-xs text-white rounded font-mono font-bold transition shrink-0">Enter</button>
-                <button onclick="sendTerminalKey('Ctrl+D')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+D</button>
-                <button onclick="sendTerminalKey('Ctrl+Z')" class="px-2.5 py-1 bg-brand-panel active:bg-brand-accent/50 active:scale-95 border border-brand-border text-xs text-slate-200 hover:text-white rounded font-mono font-bold transition shrink-0">Ctrl+Z</button>
             </div>
             <!-- Quick Commands Bar -->
             <div id="terminal-quick-cmds" class="px-3 py-1.5 bg-brand-dark/40 flex flex-wrap items-center gap-1.5 border-t border-brand-border shrink-0 select-none">
@@ -800,7 +830,10 @@
         let isMarkdownPreviewActive = false;
         let openTabs = [];
         let tabStates = {};
-        let term;
+        let terminalTabs = [];
+        let activeTerminalTabId = null;
+        let terminalTabCounter = 0;
+        let term = null;
         let terminalStreamReader = null;
 
         // Initialize Lucide icons
@@ -2538,6 +2571,7 @@
             const quickCmds = document.getElementById('terminal-quick-cmds');
             const runForm = document.getElementById('terminal-form').parentNode;
             const title = document.getElementById('terminal-title');
+            const tabsWrapper = document.getElementById('terminal-tabs-wrapper');
             const clearBtn = document.getElementById('btn-clear-terminal');
             const minBtn = document.getElementById('btn-minimize-terminal');
             const header = document.getElementById('terminal-header');
@@ -2555,7 +2589,8 @@
                 if (shortcuts) shortcuts.classList.add('hidden');
                 if (quickCmds) quickCmds.classList.add('hidden');
                 if (runForm) runForm.classList.add('hidden');
-                title.classList.add('hidden');
+                if (title) title.classList.add('hidden');
+                if (tabsWrapper) tabsWrapper.classList.add('hidden');
                 clearBtn.classList.add('hidden');
                 
                 // Adjust header flex for centered button
@@ -2586,7 +2621,8 @@
                 if (shortcuts) shortcuts.classList.remove('hidden');
                 if (quickCmds) quickCmds.classList.remove('hidden');
                 if (runForm) runForm.classList.remove('hidden');
-                title.classList.remove('hidden');
+                if (title) title.classList.remove('hidden');
+                if (tabsWrapper) tabsWrapper.classList.remove('hidden');
                 clearBtn.classList.remove('hidden');
                 
                 // Adjust header flex
@@ -2737,22 +2773,34 @@
         }
 
         function initInteractiveTerminal() {
-            const container = document.getElementById('terminal-container');
-            if (!container) return;
-
-            if (term) {
-                try { term.dispose(); } catch(e) {}
-                term = null;
+            // Initialize first terminal tab ("Terminal 1") if none exists
+            if (terminalTabs.length === 0) {
+                addTerminalTab("Terminal 1");
             }
+        }
 
-            container.innerHTML = '';
+        function addTerminalTab(title = null) {
+            terminalTabCounter++;
+            const tabId = 'term-tab-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+            const tabName = title || `Terminal ${terminalTabCounter}`;
+            const mainContainer = document.getElementById('terminal-container');
+            if (!mainContainer) return null;
+
+            // Create container element for this tab
+            const tabContainer = document.createElement('div');
+            tabContainer.id = `container-${tabId}`;
+            tabContainer.className = 'w-full h-full terminal-tab-view hidden';
+            mainContainer.appendChild(tabContainer);
+
+            // Ensure tabContainer is clean
+            tabContainer.innerHTML = '';
 
             const isMobile = window.innerWidth < 768;
-            term = new Terminal({
+            const tabTerm = new Terminal({
                 cursorBlink: true,
                 convertEol: true,
                 fontSize: isMobile ? 12 : 13,
-                fontFamily: "'JetBrains Mono', 'Fira Code', 'Menlo', 'Consolas', monospace",
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 theme: {
                     background: '#090a15',
                     foreground: '#f8fafc',
@@ -2776,144 +2824,415 @@
                     brightWhite: '#ffffff'
                 }
             });
-
             if (typeof FitAddon !== 'undefined') {
                 try {
+                    let fitAddon = null;
                     if (typeof FitAddon.FitAddon === 'function') {
                         fitAddon = new FitAddon.FitAddon();
                     } else if (typeof FitAddon === 'function') {
                         fitAddon = new FitAddon();
                     }
                     if (fitAddon) {
-                        term.loadAddon(fitAddon);
+                        tabTerm.loadAddon(fitAddon);
                     }
                 } catch (e) {
                     console.warn('Could not initialize FitAddon:', e);
                 }
             }
-
-            term.open(container);
+            tabTerm.open(tabContainer);
             
-            // Handle keypresses/inputs inside xterm.js
-            term.onData(data => {
-                sendTerminalInput(data);
+            // Handle keypresses/inputs inside xterm.js for this session
+            tabTerm.onData(data => {
+                sendTerminalInput(tabId, typeof processModifiers === 'function' ? processModifiers(data) : data);
             });
 
-            // Start streaming stdout/stderr
-            startTerminalStreaming();
+            const tabObj = {
+                id: tabId,
+                name: tabName,
+                term: tabTerm,
+                container: tabContainer,
+                streamReader: null,
+                abortController: null,
+                isConnected: false,
+                isConnecting: false
+            };
 
-            // Resize to fit container
-            setTimeout(resizeTerminalToFit, 100);
+            terminalTabs.push(tabObj);
+
+            // Switch to the newly created tab
+            switchTerminalTab(tabId);
+
+            // Start streaming backend session for tabId
+            startTerminalStreaming(tabId);
+
+            return tabObj;
         }
 
-        function resizeTerminalToFit() {
-            if (!term) return;
-            const container = document.getElementById('terminal-container');
-            if (!container || container.offsetParent === null || container.clientWidth === 0 || container.clientHeight === 0) return;
+        function renderTerminalTabs() {
+            const listContainer = document.getElementById('terminal-tab-list');
+            if (!listContainer) return;
 
-            if (fitAddon) {
-                try {
-                    fitAddon.fit();
-                } catch (e) {
-                    console.error('FitAddon error:', e);
-                    fallbackResize(container);
+            listContainer.innerHTML = '';
+            terminalTabs.forEach(tab => {
+                const isActive = tab.id === activeTerminalTabId;
+                const tabBtn = document.createElement('div');
+                tabBtn.className = `flex items-center space-x-1.5 px-2.5 py-1 text-xs rounded-md cursor-pointer transition select-none font-mono shrink-0 ${
+                    isActive
+                        ? 'bg-brand-panel border border-brand-accent/60 text-white font-semibold shadow-sm'
+                        : 'bg-brand-dark/60 hover:bg-brand-panel/50 text-slate-400 hover:text-slate-200 border border-transparent'
+                }`;
+                
+                // Event listener to switch tab
+                tabBtn.addEventListener('click', () => switchTerminalTab(tab.id));
+
+                // Connection status dot
+                const statusDot = document.createElement('span');
+                statusDot.className = `w-1.5 h-1.5 rounded-full shrink-0 ${tab.isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`;
+                statusDot.title = tab.isConnected ? 'Sesi Terhubung' : 'Nyambung Ulang...';
+                tabBtn.appendChild(statusDot);
+
+                const tabTitle = document.createElement('span');
+                tabTitle.className = 'truncate max-w-[90px] md:max-w-[130px]';
+                tabTitle.innerText = tab.name;
+                tabBtn.appendChild(tabTitle);
+
+                if (terminalTabs.length > 1) {
+                    const closeBtn = document.createElement('button');
+                    closeBtn.className = 'p-0.5 hover:bg-slate-700/60 rounded text-slate-400 hover:text-rose-400 transition ml-1 shrink-0 flex items-center justify-center';
+                    closeBtn.title = `Tutup ${tab.name}`;
+                    closeBtn.innerHTML = '<i data-lucide="x" class="w-3 h-3"></i>';
+                    closeBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeTerminalTab(tab.id, e);
+                    });
+                    tabBtn.appendChild(closeBtn);
+                }
+
+                listContainer.appendChild(tabBtn);
+            });
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function switchTerminalTab(tabId) {
+            const tabObj = terminalTabs.find(t => t.id === tabId);
+            if (!tabObj) return;
+
+            activeTerminalTabId = tabId;
+            term = tabObj.term;
+
+            terminalTabs.forEach(t => {
+                if (t.id === tabId) {
+                    t.container.classList.remove('hidden');
+                } else {
+                    t.container.classList.add('hidden');
+                }
+            });
+
+            renderTerminalTabs();
+
+            // Seamlessly reconnect stream if session stream was disconnected
+            if (!tabObj.isConnected && !tabObj.isConnecting) {
+                startTerminalStreaming(tabId);
+            }
+
+            setTimeout(() => {
+                resizeTerminalToFit(tabId);
+                if (tabObj.term) tabObj.term.focus();
+            }, 50);
+        }
+
+        function closeTerminalTab(tabId, event) {
+            if (event) event.stopPropagation();
+
+            const index = terminalTabs.findIndex(t => t.id === tabId);
+            if (index === -1) return;
+
+            const tabToClose = terminalTabs[index];
+            
+            // Abort stream fetch reader if running
+            if (tabToClose.abortController) {
+                try { tabToClose.abortController.abort(); } catch (e) {}
+            }
+            if (tabToClose.streamReader) {
+                try { tabToClose.streamReader.cancel(); } catch (e) {}
+            }
+            if (tabToClose.term) {
+                try { tabToClose.term.dispose(); } catch (e) {}
+            }
+            if (tabToClose.container) {
+                tabToClose.container.remove();
+            }
+
+            terminalTabs.splice(index, 1);
+
+            if (activeTerminalTabId === tabId) {
+                if (terminalTabs.length > 0) {
+                    const nextTab = terminalTabs[Math.max(0, index - 1)];
+                    switchTerminalTab(nextTab.id);
+                } else {
+                    addTerminalTab();
                 }
             } else {
-                fallbackResize(container);
+                renderTerminalTabs();
+            }
+        }
+
+        function getCharDimensions() {
+            const isMobile = window.innerWidth < 768;
+            const fontSize = isMobile ? 12 : 13;
+            const fontFamily = "'JetBrains Mono', 'Fira Code', monospace";
+
+            if (term && term._core && term._core._renderService && term._core._renderService.dimensions) {
+                const dims = term._core._renderService.dimensions.css.cell;
+                if (dims && dims.width > 0 && dims.height > 0) {
+                    return {
+                        width: dims.width,
+                        height: dims.height
+                    };
+                }
             }
 
-            if (term.cols > 10 && term.rows > 3) {
-                fetch(`/api/terminal/resize?cols=${term.cols}&rows=${term.rows}`).catch(() => {});
-            }
+            const temp = document.createElement('span');
+            temp.style.fontFamily = fontFamily;
+            temp.style.fontSize = fontSize + 'px';
+            temp.style.lineHeight = 'normal';
+            temp.style.visibility = 'hidden';
+            temp.style.position = 'absolute';
+            temp.style.top = '-9999px';
+            temp.style.left = '-9999px';
+            temp.style.whiteSpace = 'pre';
+            temp.innerText = 'AAAAAAAAAAAAAAAAAAAA'; // 20 chars
+            document.body.appendChild(temp);
+            
+            const rect = temp.getBoundingClientRect();
+            const charWidth = rect.width / 20;
+            const charHeight = rect.height;
+            
+            document.body.removeChild(temp);
+            
+            return {
+                width: charWidth || (isMobile ? 7.2 : 7.8),
+                height: charHeight || (isMobile ? 15 : 16)
+            };
+        }
+
+        function resizeTerminalToFit(sessionId = null) {
+            const targetSessionId = sessionId || activeTerminalTabId;
+            if (!targetSessionId) return;
+
+            const tabObj = terminalTabs.find(t => t.id === targetSessionId);
+            if (!tabObj || !tabObj.term) return;
+
+            const container = tabObj.container;
+            if (!container || container.offsetParent === null) return;
+
+            fallbackResize(container);
         }
 
         function fallbackResize(container) {
             if (!term) return;
+            const targetSessionId = activeTerminalTabId;
+            const tabObj = terminalTabs.find(t => t.id === targetSessionId);
+            if (!tabObj || !tabObj.term) return;
+
             const dims = getCharDimensions();
-            const availableWidth = container.clientWidth - 16;
-            const availableHeight = container.clientHeight - 16;
-            const cols = Math.floor(availableWidth / dims.width);
-            const rows = Math.floor(availableHeight / dims.height);
-            if (cols > 10 && rows > 3) {
-                term.resize(cols, rows);
+            const style = window.getComputedStyle(container);
+            const paddingLeft = parseFloat(style.paddingLeft) || 0;
+            const paddingRight = parseFloat(style.paddingRight) || 0;
+            const paddingTop = parseFloat(style.paddingTop) || 0;
+            const paddingBottom = parseFloat(style.paddingBottom) || 0;
+
+            const availableWidth = container.clientWidth - paddingLeft - paddingRight;
+            const availableHeight = container.clientHeight - paddingTop - paddingBottom;
+
+            if (availableWidth <= 0 || availableHeight <= 0) return;
+
+            const cols = Math.max(10, Math.floor(availableWidth / dims.width));
+            const rows = Math.max(3, Math.floor(availableHeight / dims.height));
+
+            if (cols > 10 && rows > 3 && (tabObj.term.cols !== cols || tabObj.term.rows !== rows)) {
+                tabObj.term.resize(cols, rows);
+                fetch(`/api/terminal/resize?session_id=${encodeURIComponent(targetSessionId)}&cols=${cols}&rows=${rows}`).catch(() => {});
             }
         }
 
-        async function startTerminalStreaming() {
-            if (isTerminalStreaming) return;
-            isTerminalStreaming = true;
+        async function startTerminalStreaming(sessionId = null) {
+            const targetSessionId = sessionId || activeTerminalTabId;
+            if (!targetSessionId) return;
+
+            const tabObj = terminalTabs.find(t => t.id === targetSessionId);
+            if (!tabObj || tabObj.isConnecting) return;
+
+            tabObj.isConnecting = true;
 
             try {
-                if (terminalStreamReader) {
-                    try { await terminalStreamReader.cancel(); } catch(e) {}
-                    terminalStreamReader = null;
-                }
+                const controller = new AbortController();
+                tabObj.abortController = controller;
 
-                const response = await fetch('/api/terminal/stream');
-                if (!response.ok) throw new Error('Terminal stream failed to start (' + response.status + ')');
-                
-                terminalStreamReader = response.body.getReader();
+                const response = await fetch(`/api/terminal/stream?session_id=${encodeURIComponent(targetSessionId)}`, {
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error('Terminal stream failed to start');
+
+                tabObj.streamReader = response.body.getReader();
+                tabObj.isConnected = true;
+                tabObj.isConnecting = false;
+                renderTerminalTabs();
+
                 const decoder = new TextDecoder('utf-8', { fatal: false });
                 
                 while (true) {
-                    const { done, value } = await terminalStreamReader.read();
+                    const { done, value } = await tabObj.streamReader.read();
                     if (done) break;
                     if (value && value.length > 0) {
                         const text = decoder.decode(value, { stream: true });
                         if (text) {
                             const cleanText = text.replace(/\x00/g, '');
-                            if (cleanText) {
-                                term.write(cleanText);
+                            if (cleanText && tabObj.term) {
+                                tabObj.term.write(cleanText);
                             }
                         }
                     }
                 }
             } catch (err) {
-                if (term) {
-                    term.write('\r\n\x1b[31m[ERROR] Gagal nyambung menyang terminal: ' + err.message + '\x1b[0m\r\n');
+                tabObj.isConnected = false;
+                tabObj.isConnecting = false;
+                renderTerminalTabs();
+
+                if (err.name === 'AbortError') return;
+
+                if (tabObj.term) {
+                    tabObj.term.write('\r\n\x1b[31m[ERROR] Gagal nyambung menyang terminal: ' + err.message + '\x1b[0m\r\n');
                 }
-            } finally {
-                terminalStreamReader = null;
-                isTerminalStreaming = false;
-                // Auto reconnect after 3 seconds if terminal active
-                if (term) {
-                    setTimeout(startTerminalStreaming, 3000);
-                }
+
+                // Seamless automatic retry connection in 3 seconds if tab still exists
+                setTimeout(() => {
+                    if (terminalTabs.some(t => t.id === targetSessionId)) {
+                        startTerminalStreaming(targetSessionId);
+                    }
+                }, 3000);
             }
         }
 
-        async function processInputQueue() {
-            if (isSendingInput || inputQueue.length === 0) return;
-            isSendingInput = true;
+        async function sendTerminalInput(sessionIdOrData, dataParam) {
+            let sessionId = sessionIdOrData;
+            let data = dataParam;
 
-            const batchData = inputQueue.join('');
-            inputQueue = [];
+            if (data === undefined) {
+                data = sessionIdOrData;
+                sessionId = activeTerminalTabId;
+            }
+
+            if (!sessionId) {
+                sessionId = activeTerminalTabId;
+            }
+
+            if (!sessionId || data === undefined || data === null) return;
 
             try {
                 await fetch('/api/terminal/input', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: batchData })
+                    body: JSON.stringify({ session_id: sessionId, data: data })
                 });
             } catch (err) {
                 console.error('Failed to send terminal input:', err);
-            } finally {
-                isSendingInput = false;
-                if (inputQueue.length > 0) {
-                    processInputQueue();
+            }
+        }
+
+        let stickyCtrl = false;
+        let stickyAlt = false;
+
+        function updateModifierUI() {
+            const ctrlBtn = document.getElementById('btn-term-ctrl');
+            const altBtn = document.getElementById('btn-term-alt');
+            if (ctrlBtn) {
+                if (stickyCtrl) {
+                    ctrlBtn.classList.add('bg-brand-accent', 'text-white', 'border-purple-400', 'shadow-md', 'shadow-purple-500/30');
+                    ctrlBtn.classList.remove('bg-brand-panel', 'text-slate-200');
+                } else {
+                    ctrlBtn.classList.remove('bg-brand-accent', 'text-white', 'border-purple-400', 'shadow-md', 'shadow-purple-500/30');
+                    ctrlBtn.classList.add('bg-brand-panel', 'text-slate-200');
+                }
+            }
+            if (altBtn) {
+                if (stickyAlt) {
+                    altBtn.classList.add('bg-brand-accent', 'text-white', 'border-purple-400', 'shadow-md', 'shadow-purple-500/30');
+                    altBtn.classList.remove('bg-brand-panel', 'text-slate-200');
+                } else {
+                    altBtn.classList.remove('bg-brand-accent', 'text-white', 'border-purple-400', 'shadow-md', 'shadow-purple-500/30');
+                    altBtn.classList.add('bg-brand-panel', 'text-slate-200');
                 }
             }
         }
 
-        function sendTerminalInput(data) {
-            if (!data) return;
-            inputQueue.push(data);
-            processInputQueue();
+        function toggleStickyCtrl() {
+            stickyCtrl = !stickyCtrl;
+            updateModifierUI();
+        }
+
+        function toggleStickyAlt() {
+            stickyAlt = !stickyAlt;
+            updateModifierUI();
+        }
+
+        function processModifiers(data) {
+            if (!stickyCtrl && !stickyAlt) return data;
+
+            let result = data;
+
+            if (stickyCtrl) {
+                if (result.length === 1) {
+                    const charCode = result.toUpperCase().charCodeAt(0);
+                    if (charCode >= 65 && charCode <= 90) {
+                        result = String.fromCharCode(charCode - 64);
+                    } else if (result === '@' || result === ' ') {
+                        result = '\x00';
+                    } else if (result === '[') {
+                        result = '\x1b';
+                    } else if (result === '\\') {
+                        result = '\x1c';
+                    } else if (result === ']') {
+                        result = '\x1d';
+                    } else if (result === '^') {
+                        result = '\x1e';
+                    } else if (result === '_') {
+                        result = '\x1f';
+                    } else if (result === '?') {
+                        result = '\x7f';
+                    }
+                }
+            }
+
+            if (stickyAlt) {
+                result = '\x1b' + result;
+            }
+
+            stickyCtrl = false;
+            stickyAlt = false;
+            updateModifierUI();
+
+            return result;
         }
 
         function sendTerminalKey(key) {
+            if (key === 'Ctrl') {
+                toggleStickyCtrl();
+                return;
+            }
+            if (key === 'Alt') {
+                toggleStickyAlt();
+                return;
+            }
+
             let seq = '';
             if (key === 'Ctrl+C') seq = '\x03';
+            else if (key === 'Ctrl+D') seq = '\x04';
+            else if (key === 'Ctrl+Z') seq = '\x1a';
+            else if (key === 'Ctrl+L') seq = '\x0c';
+            else if (key === 'Ctrl+A') seq = '\x01';
+            else if (key === 'Ctrl+E') seq = '\x05';
             else if (key === 'Tab') seq = '\t';
             else if (key === 'Esc') seq = '\x1b';
             else if (key === 'Up') seq = '\x1b[A';
@@ -2921,10 +3240,20 @@
             else if (key === 'Left') seq = '\x1b[D';
             else if (key === 'Right') seq = '\x1b[C';
             else if (key === 'Enter') seq = '\r';
-            else if (key === 'Ctrl+D') seq = '\x04';
-            else if (key === 'Ctrl+Z') seq = '\x1a';
-            
+            else if (key === '/') seq = '/';
+            else if (key === '\\') seq = '\\';
+            else if (key === '~') seq = '~';
+            else if (key === '|') seq = '|';
+            else if (key === '_') seq = '_';
+            else if (key === ':') seq = ':';
+            else if (key === '-') seq = '-';
+            else if (key === '?') seq = '?';
+            else if (key === '"') seq = '"';
+            else if (key === "'") seq = "'";
+            else seq = key;
+
             if (seq) {
+                seq = processModifiers(seq);
                 sendTerminalInput(seq);
             }
         }
@@ -3934,9 +4263,9 @@
 
             if (!releases || !Array.isArray(releases) || releases.length === 0) {
                 releases = [
+                    { tag_name: 'v1.7.3', prerelease: false },
                     { tag_name: 'v1.7.2', prerelease: false },
-                    { tag_name: 'v1.6.9', prerelease: false },
-                    { tag_name: 'v1.6.8', prerelease: false }
+                    { tag_name: 'v1.7.1', prerelease: false }
                 ];
             }
 
@@ -3957,8 +4286,8 @@
             const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
             const latestStable = stableTags.sort(compareTags).pop();
             const latestTesting = testingTags.sort(compareTags).pop();
-            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.2');
-            const current = "v1.7.2";
+            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.3');
+            const current = "v1.7.3";
 
             if (verDisplay) verDisplay.innerText = latest;
             if (releaseSelect) {
@@ -4560,7 +4889,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.2</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.3</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

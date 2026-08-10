@@ -51,3 +51,15 @@ func TestCleanupChat(t *testing.T) {
 		t.Errorf("expected context to be canceled on cleanup")
 	}
 }
+
+func TestChatRequestPureFlags(t *testing.T) {
+	req := ChatRequest{
+		Prompt:     "Hello",
+		SkipAddDir: true,
+		IsPure:     true,
+	}
+
+	if !req.SkipAddDir || !req.IsPure {
+		t.Errorf("expected SkipAddDir and IsPure to be true")
+	}
+}

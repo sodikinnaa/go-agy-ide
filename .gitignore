@@ -7,6 +7,8 @@ main
 # Configuration and session cache
 workspaces.json
 cookie.txt
+cookies.txt
+api_key.txt
 
 # OS metadata
 .DS_Store

@@ -182,10 +182,14 @@ func (h *Handler) HandleV1ChatCompletions(w http.ResponseWriter, r *http.Request
 
 	convID := fmt.Sprintf("openai-v1-%d", time.Now().UnixNano())
 
+	isAgentMode := strings.EqualFold(strings.TrimSpace(r.Header.Get("X-AGY-Agent-Mode")), "true")
+
 	chatReq := chat.ChatRequest{
 		Prompt:       fullPrompt,
 		Model:        modelName,
 		Conversation: convID,
+		SkipAddDir:   !isAgentMode,
+		IsPure:       !isAgentMode,
 	}
 
 	var cmd *exec.Cmd

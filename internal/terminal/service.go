@@ -17,7 +17,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 )
@@ -28,7 +30,9 @@ func stripANSI(str string) string {
 	return ansiRegex.ReplaceAllString(str, "")
 }
 
-type Service struct {
+type TerminalSession struct {
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"createdAt"`
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	stdout    io.ReadCloser
@@ -38,6 +42,11 @@ type Service struct {
 	clients   map[chan []byte]bool
 	clientMux sync.Mutex
 	history   []byte
+}
+
+type Service struct {
+	sessions map[string]*TerminalSession
+	mu       sync.RWMutex
 }
 
 type OpenAISettings struct {
@@ -50,9 +59,584 @@ type OpenAISettings struct {
 }
 
 func NewService() *Service {
-	return &Service{
-		clients: make(map[chan []byte]bool),
+	s := &Service{
+		sessions: make(map[string]*TerminalSession),
 	}
+	_, _ = s.CreateSession("default")
+	return s
+}
+
+func (s *Service) CreateSession(id string) (*TerminalSession, error) {
+	if id == "" {
+		id = "default"
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sessions == nil {
+		s.sessions = make(map[string]*TerminalSession)
+	}
+
+	if sess, ok := s.sessions[id]; ok && sess != nil {
+		return sess, nil
+	}
+
+	sess := &TerminalSession{
+		ID:        id,
+		clients:   make(map[chan []byte]bool),
+		CreatedAt: time.Now(),
+	}
+	s.sessions[id] = sess
+	return sess, nil
+}
+
+func (s *Service) GetSession(id string) *TerminalSession {
+	if id == "" {
+		id = "default"
+	}
+
+	s.mu.RLock()
+	sess, ok := s.sessions[id]
+	s.mu.RUnlock()
+
+	if ok && sess != nil {
+		return sess
+	}
+
+	if id == "default" {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+
+		if s.sessions == nil {
+			s.sessions = make(map[string]*TerminalSession)
+		}
+		if sess, ok := s.sessions["default"]; ok && sess != nil {
+			return sess
+		}
+		sess = &TerminalSession{
+			ID:        "default",
+			clients:   make(map[chan []byte]bool),
+			CreatedAt: time.Now(),
+		}
+		s.sessions["default"] = sess
+		return sess
+	}
+
+	return nil
+}
+
+func (s *Service) ListSessions() []*TerminalSession {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	sessions := make([]*TerminalSession, 0, len(s.sessions))
+	for _, sess := range s.sessions {
+		sessions = append(sessions, sess)
+	}
+	return sessions
+}
+
+func (s *Service) CloseSession(id string) {
+	if id == "" {
+		id = "default"
+	}
+
+	s.mu.Lock()
+	sess, ok := s.sessions[id]
+	if ok && sess != nil {
+		delete(s.sessions, id)
+	}
+	s.mu.Unlock()
+
+	if ok && sess != nil {
+		sess.Kill()
+	}
+}
+
+// Service routing methods targeting specific session ID or defaulting to "default"
+func (s *Service) StartSession(workspaceDir string) error {
+	return s.StartSessionID("default", workspaceDir)
+}
+
+func (s *Service) StartSessionID(id string, workspaceDir string) error {
+	if id == "" {
+		id = "default"
+	}
+	sess, err := s.CreateSession(id)
+	if err != nil {
+		return err
+	}
+	return sess.Start(workspaceDir)
+}
+
+func (s *Service) WriteInput(data string) error {
+	return s.WriteInputSession("default", data)
+}
+
+func (s *Service) WriteInputSession(id string, data string) error {
+	if id == "" {
+		id = "default"
+	}
+	sess := s.GetSession(id)
+	if sess == nil {
+		return fmt.Errorf("terminal session %q not found", id)
+	}
+	return sess.WriteInput(data)
+}
+
+func (s *Service) RegisterClient(ch chan []byte) {
+	s.RegisterClientSession("default", ch)
+}
+
+func (s *Service) RegisterClientSession(id string, ch chan []byte) {
+	if id == "" {
+		id = "default"
+	}
+	sess, _ := s.CreateSession(id)
+	if sess != nil {
+		sess.RegisterClient(ch)
+	}
+}
+
+func (s *Service) UnregisterClient(ch chan []byte) {
+	s.UnregisterClientSession("default", ch)
+}
+
+func (s *Service) UnregisterClientSession(id string, ch chan []byte) {
+	if id == "" {
+		id = "default"
+	}
+	sess := s.GetSession(id)
+	if sess != nil {
+		sess.UnregisterClient(ch)
+	}
+}
+
+func (s *Service) Broadcast(data []byte) {
+	sess := s.GetSession("default")
+	if sess != nil {
+		sess.Broadcast(data)
+	}
+}
+
+func (s *Service) KillSession() {
+	s.KillSessionID("default")
+}
+
+func (s *Service) KillSessionID(id string) {
+	if id == "" {
+		id = "default"
+	}
+	sess := s.GetSession(id)
+	if sess != nil {
+		sess.Kill()
+	}
+}
+
+func (s *Service) ResizeSession(cols, rows int) error {
+	return s.ResizeSessionID("default", cols, rows)
+}
+
+func (s *Service) ResizeSessionID(id string, cols, rows int) error {
+	if id == "" {
+		id = "default"
+	}
+	sess := s.GetSession(id)
+	if sess == nil {
+		return nil
+	}
+	return sess.Resize(cols, rows)
+}
+
+// TerminalSession methods
+func (ts *TerminalSession) IsRunning() bool {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+	return ts.isRunning
+}
+
+func (ts *TerminalSession) Start(workspaceDir string) error {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+
+	if ts.isRunning {
+		return nil
+	}
+
+	env := buildTerminalEnv()
+
+	var cmd *exec.Cmd
+	var stdin io.WriteCloser
+	var stdout io.ReadCloser
+	var ptmx *os.File
+	var err error
+
+	if runtime.GOOS != "windows" {
+		shell := getShellPath()
+		cmd = exec.Command(shell, "-i")
+		cmd.Dir = workspaceDir
+		cmd.Env = env
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+		// Allocate real PTY master/slave pair using creack/pty
+		ptmx, err = pty.Start(cmd)
+		if err == nil {
+			// Set standard initial terminal window size (35 rows x 120 cols)
+			_ = pty.Setsize(ptmx, &pty.Winsize{
+				Rows: 35,
+				Cols: 120,
+			})
+			stdin = ptmx
+			stdout = ptmx
+			ts.ptyFile = ptmx
+		} else {
+			// Fallback if PTY allocation fails (e.g., restricted containers)
+			cmd, stdin, stdout, err = startFallbackUnixSession(workspaceDir, env)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		cmd, stdin, stdout, err = startWindowsSession(workspaceDir, env)
+		if err != nil {
+			return err
+		}
+	}
+
+	ts.cmd = cmd
+	ts.stdin = stdin
+	ts.stdout = stdout
+	ts.isRunning = true
+
+	// Dedicated background read loop for handling escape sequences and PTY stream
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, readErr := stdout.Read(buf)
+			if n > 0 {
+				data := make([]byte, n)
+				copy(data, buf[:n])
+				ts.Broadcast(data)
+			}
+			if readErr != nil {
+				break
+			}
+		}
+
+		if cmd != nil {
+			_ = cmd.Wait()
+		}
+
+		ts.mutex.Lock()
+		ts.isRunning = false
+		if ts.ptyFile != nil {
+			_ = ts.ptyFile.Close()
+			ts.ptyFile = nil
+		}
+		if ts.stdin != nil && ts.stdin != ts.ptyFile {
+			_ = ts.stdin.Close()
+		}
+		if ts.stdout != nil && ts.stdout != ts.ptyFile {
+			_ = ts.stdout.Close()
+		}
+		ts.mutex.Unlock()
+	}()
+
+	return nil
+}
+
+func startFallbackUnixSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("script"); err == nil {
+		cmd = exec.Command("script", "-q", "-f", "-c", "bash -i", "/dev/null")
+	} else {
+		cmd = exec.Command("bash", "-i")
+	}
+
+	cmd.Dir = workspaceDir
+	cmd.Env = env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, nil, nil, err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		return nil, nil, nil, err
+	}
+
+	return cmd, stdin, stdout, nil
+}
+
+func startWindowsSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
+	var cmd *exec.Cmd
+	if _, err := exec.LookPath("bash"); err == nil {
+		cmd = exec.Command("bash", "-i")
+	} else if _, err := exec.LookPath("powershell"); err == nil {
+		cmd = exec.Command("powershell")
+	} else {
+		cmd = exec.Command("cmd")
+	}
+
+	cmd.Dir = workspaceDir
+	cmd.Env = env
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = stdin.Close()
+		return nil, nil, nil, err
+	}
+	cmd.Stderr = cmd.Stdout
+
+	if err := cmd.Start(); err != nil {
+		_ = stdin.Close()
+		_ = stdout.Close()
+		return nil, nil, nil, err
+	}
+
+	return cmd, stdin, stdout, nil
+}
+
+func (ts *TerminalSession) WriteInput(data string) error {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+
+	if !ts.isRunning || ts.stdin == nil {
+		return fmt.Errorf("terminal session not running")
+	}
+
+	_, err := ts.stdin.Write([]byte(data))
+	return err
+}
+
+func (ts *TerminalSession) RegisterClient(ch chan []byte) {
+	ts.clientMux.Lock()
+	if ts.clients == nil {
+		ts.clients = make(map[chan []byte]bool)
+	}
+	ts.clients[ch] = true
+
+	// Send history to new client
+	if len(ts.history) > 0 {
+		histToSend := sanitizeHistoryForClient(ts.history)
+		if len(histToSend) > 0 {
+			histCopy := make([]byte, len(histToSend))
+			copy(histCopy, histToSend)
+			select {
+			case ch <- histCopy:
+			default:
+			}
+		}
+	}
+	ts.clientMux.Unlock()
+}
+
+func (ts *TerminalSession) UnregisterClient(ch chan []byte) {
+	ts.clientMux.Lock()
+	if ts.clients != nil {
+		delete(ts.clients, ch)
+	}
+	ts.clientMux.Unlock()
+}
+
+func (ts *TerminalSession) Broadcast(data []byte) {
+	ts.clientMux.Lock()
+	defer ts.clientMux.Unlock()
+
+	ts.history = append(ts.history, data...)
+
+	// Maintain clean buffer history up to 65KB
+	maxHistory := 65536
+	if len(ts.history) > maxHistory {
+		targetCut := len(ts.history) - maxHistory
+		cut := findNextSafeBoundary(ts.history, targetCut)
+		if cut < len(ts.history) {
+			ts.history = ts.history[cut:]
+		} else {
+			ts.history = ts.history[len(ts.history)-maxHistory:]
+			ts.history = bytes.ToValidUTF8(ts.history, nil)
+		}
+	}
+
+	for ch := range ts.clients {
+		select {
+		case ch <- data:
+		default:
+		}
+	}
+}
+
+func (ts *TerminalSession) Kill() {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+
+	if ts.isRunning && ts.cmd != nil && ts.cmd.Process != nil {
+		pid := ts.cmd.Process.Pid
+		if pid > 0 {
+			if runtime.GOOS != "windows" {
+				if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
+					_ = ts.cmd.Process.Kill()
+				}
+			} else {
+				_ = ts.cmd.Process.Kill()
+			}
+		}
+	}
+	if ts.ptyFile != nil {
+		_ = ts.ptyFile.Close()
+		ts.ptyFile = nil
+	}
+	ts.isRunning = false
+}
+
+func (ts *TerminalSession) Resize(cols, rows int) error {
+	ts.mutex.Lock()
+	defer ts.mutex.Unlock()
+
+	if cols <= 0 || rows <= 0 {
+		return nil
+	}
+
+	if ts.ptyFile != nil {
+		return pty.Setsize(ts.ptyFile, &pty.Winsize{
+			Rows: uint16(rows),
+			Cols: uint16(cols),
+		})
+	}
+	return nil
+}
+
+// isSafeBoundary checks if index cut in buf is at a safe UTF-8 / ANSI escape sequence boundary.
+func isSafeBoundary(buf []byte, cut int) (bool, int) {
+	if cut <= 0 || cut >= len(buf) {
+		return true, cut
+	}
+
+	for i := cut - 1; i >= 0 && i >= cut-4; i-- {
+		if utf8.RuneStart(buf[i]) {
+			if !utf8.FullRune(buf[i:]) {
+				return false, cut + (utf8.UTFMax - (cut - i))
+			}
+			break
+		}
+	}
+
+	checkBack := 64
+	start := cut - checkBack
+	if start < 0 {
+		start = 0
+	}
+
+	window := buf[start:cut]
+	if lastESC := bytes.LastIndexByte(window, 0x1b); lastESC >= 0 {
+		escPos := start + lastESC
+		sub := buf[escPos:]
+		loc := ansiRegex.FindIndex(sub)
+		if loc == nil {
+			return false, escPos
+		}
+		endEsc := escPos + loc[1]
+		if cut < endEsc {
+			return false, endEsc
+		}
+	}
+
+	return true, cut
+}
+
+// findNextSafeBoundary finds a safe cut index at or after targetCut in buf.
+func findNextSafeBoundary(buf []byte, targetCut int) int {
+	if targetCut <= 0 {
+		return 0
+	}
+	if targetCut >= len(buf) {
+		return len(buf)
+	}
+
+	checkWindow := 2048
+	endWin := targetCut + checkWindow
+	if endWin > len(buf) {
+		endWin = len(buf)
+	}
+
+	if idx := bytes.IndexByte(buf[targetCut:endWin], '\n'); idx >= 0 {
+		cand := targetCut + idx + 1
+		if safe, nextCand := isSafeBoundary(buf, cand); safe {
+			return cand
+		} else if nextCand < len(buf) {
+			return nextCand
+		}
+	}
+
+	cut := targetCut
+	for cut < len(buf) {
+		safe, nextCut := isSafeBoundary(buf, cut)
+		if safe {
+			return cut
+		}
+		if nextCut <= cut {
+			cut++
+		} else {
+			cut = nextCut
+		}
+	}
+
+	return len(buf)
+}
+
+// sanitizeHistoryForClient prepares history buffer for broadcasting to a new client.
+func sanitizeHistoryForClient(history []byte) []byte {
+	if len(history) == 0 {
+		return nil
+	}
+
+	start := 0
+	if safe, next := isSafeBoundary(history, 0); !safe {
+		start = next
+	}
+
+	if start >= len(history) {
+		return nil
+	}
+
+	end := len(history)
+
+	for i := end - 1; i >= start && i >= end-4; i-- {
+		if utf8.RuneStart(history[i]) {
+			if !utf8.FullRune(history[i:end]) {
+				end = i
+			}
+			break
+		}
+	}
+
+	if start >= end {
+		return nil
+	}
+
+	slice := history[start:end]
+
+	if !utf8.Valid(slice) {
+		slice = bytes.ToValidUTF8(slice, nil)
+	}
+
+	return slice
 }
 
 // buildTerminalEnv constructs a full environment with optimal TUI / CLI terminal variables
@@ -65,9 +649,10 @@ func buildTerminalEnv() []string {
 		"PAGER":       "cat",
 		"FORCE_COLOR": "true",
 		"CLICOLOR":    "1",
+		"BROWSER":     "false",
+		"DISPLAY":     "",
 	}
 
-	// Ensure PATH includes common user and system binary directories
 	currentPath := os.Getenv("PATH")
 	homeDir, _ := os.UserHomeDir()
 	extraPaths := []string{
@@ -138,275 +723,6 @@ func getShellPath() string {
 		return shPath
 	}
 	return "/bin/bash"
-}
-
-func (s *Service) StartSession(workspaceDir string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if s.isRunning {
-		return nil
-	}
-
-	if workspaceDir == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			workspaceDir = home
-		} else {
-			workspaceDir = "."
-		}
-	} else if _, err := os.Stat(workspaceDir); err != nil {
-		if home, err := os.UserHomeDir(); err == nil {
-			workspaceDir = home
-		}
-	}
-
-	env := buildTerminalEnv()
-
-	var cmd *exec.Cmd
-	var stdin io.WriteCloser
-	var stdout io.ReadCloser
-	var ptmx *os.File
-	var err error
-
-	if runtime.GOOS != "windows" {
-		shell := getShellPath()
-		cmd = exec.Command(shell, "-i")
-		cmd.Dir = workspaceDir
-		cmd.Env = env
-
-		// Allocate real PTY master/slave pair using creack/pty
-		ptmx, err = pty.Start(cmd)
-		if err == nil {
-			// Set standard initial terminal window size (35 rows x 120 cols)
-			_ = pty.Setsize(ptmx, &pty.Winsize{
-				Rows: 35,
-				Cols: 120,
-			})
-			stdin = ptmx
-			stdout = ptmx
-			s.ptyFile = ptmx
-		} else {
-			// Fallback if PTY allocation fails (e.g., restricted containers)
-			cmd, stdin, stdout, err = startFallbackUnixSession(workspaceDir, env)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		cmd, stdin, stdout, err = startWindowsSession(workspaceDir, env)
-		if err != nil {
-			return err
-		}
-	}
-
-	s.cmd = cmd
-	s.stdin = stdin
-	s.stdout = stdout
-	s.isRunning = true
-
-	// Dedicated background read loop for handling escape sequences and PTY stream
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, readErr := stdout.Read(buf)
-			if n > 0 {
-				data := make([]byte, n)
-				copy(data, buf[:n])
-				s.Broadcast(data)
-			}
-			if readErr != nil {
-				break
-			}
-		}
-
-		s.mutex.Lock()
-		s.isRunning = false
-		if s.ptyFile != nil {
-			_ = s.ptyFile.Close()
-			s.ptyFile = nil
-		}
-		if s.stdin != nil && s.stdin != s.ptyFile {
-			_ = s.stdin.Close()
-		}
-		if s.stdout != nil && s.stdout != s.ptyFile {
-			_ = s.stdout.Close()
-		}
-		if s.cmd != nil && s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
-			_ = s.cmd.Wait()
-		}
-		s.mutex.Unlock()
-	}()
-
-	return nil
-}
-
-func startFallbackUnixSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
-	var cmd *exec.Cmd
-	if _, err := exec.LookPath("script"); err == nil {
-		cmd = exec.Command("script", "-q", "-f", "-c", "bash -i", "/dev/null")
-	} else {
-		cmd = exec.Command("bash", "-i")
-	}
-
-	cmd.Dir = workspaceDir
-	cmd.Env = env
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, nil, nil, err
-	}
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		_ = stdout.Close()
-		return nil, nil, nil, err
-	}
-
-	return cmd, stdin, stdout, nil
-}
-
-func startWindowsSession(workspaceDir string, env []string) (*exec.Cmd, io.WriteCloser, io.ReadCloser, error) {
-	var cmd *exec.Cmd
-	if _, err := exec.LookPath("bash"); err == nil {
-		cmd = exec.Command("bash", "-i")
-	} else if _, err := exec.LookPath("powershell"); err == nil {
-		cmd = exec.Command("powershell")
-	} else {
-		cmd = exec.Command("cmd")
-	}
-
-	cmd.Dir = workspaceDir
-	cmd.Env = env
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		_ = stdin.Close()
-		return nil, nil, nil, err
-	}
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
-		_ = stdin.Close()
-		_ = stdout.Close()
-		return nil, nil, nil, err
-	}
-
-	return cmd, stdin, stdout, nil
-}
-
-func (s *Service) WriteInput(data string) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if !s.isRunning || s.stdin == nil {
-		return fmt.Errorf("terminal session not running")
-	}
-
-	_, err := s.stdin.Write([]byte(data))
-	if err != nil {
-		s.isRunning = false
-	}
-	return err
-}
-
-func (s *Service) RegisterClient(ch chan []byte) {
-	s.clientMux.Lock()
-	if s.clients == nil {
-		s.clients = make(map[chan []byte]bool)
-	}
-	s.clients[ch] = true
-
-	// Send history to new client
-	if len(s.history) > 0 {
-		histCopy := make([]byte, len(s.history))
-		copy(histCopy, s.history)
-		select {
-		case ch <- histCopy:
-		default:
-		}
-	}
-	s.clientMux.Unlock()
-}
-
-func (s *Service) UnregisterClient(ch chan []byte) {
-	s.clientMux.Lock()
-	if s.clients != nil {
-		delete(s.clients, ch)
-	}
-	s.clientMux.Unlock()
-}
-
-func (s *Service) Broadcast(data []byte) {
-	s.clientMux.Lock()
-	defer s.clientMux.Unlock()
-
-	s.history = append(s.history, data...)
-
-	// Maintain clean buffer history up to 65KB
-	maxHistory := 65536
-	if len(s.history) > maxHistory {
-		s.history = s.history[len(s.history)-maxHistory:]
-		// Ensure history doesn't truncate in middle of line/sequence if possible
-		checkLen := 1024
-		if len(s.history) < checkLen {
-			checkLen = len(s.history)
-		}
-		if idx := bytes.IndexByte(s.history[:checkLen], '\n'); idx >= 0 && idx < len(s.history)-1 {
-			s.history = s.history[idx+1:]
-		}
-	}
-
-	for ch := range s.clients {
-		select {
-		case ch <- data:
-		default:
-		}
-	}
-}
-
-func (s *Service) KillSession() {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if s.isRunning && s.cmd != nil && s.cmd.Process != nil {
-		_ = s.cmd.Process.Kill()
-	}
-	if s.ptyFile != nil {
-		_ = s.ptyFile.Close()
-		s.ptyFile = nil
-	}
-	s.isRunning = false
-}
-
-// ResizeSession updates the winsize of the active PTY
-func (s *Service) ResizeSession(cols, rows int) error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	if cols <= 0 || rows <= 0 {
-		return nil
-	}
-
-	if s.ptyFile != nil {
-		return pty.Setsize(s.ptyFile, &pty.Winsize{
-			Rows: uint16(rows),
-			Cols: uint16(cols),
-		})
-	}
-	return nil
 }
 
 // StartCommand executes a command and returns its stdout/stderr reader
@@ -715,8 +1031,6 @@ func (s *Service) GetModelsList() ([]string, error) {
 		}
 	}
 
-	// Append OpenAI-compatible models if configured. Prefer the live /models
-	// endpoint so the dropdown reflects models available for the configured key.
 	if os.Getenv("OPENAI_API_KEY") != "" {
 		openAIModels, fetchErr := s.FetchOpenAIModels("", "")
 		if fetchErr == nil && len(openAIModels) > 0 {

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.7.2"
+const AppVersion = "v1.7.3"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -1236,16 +1236,24 @@ func (h *Handler) HandleTerminalStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("Transfer-Encoding", "chunked")
 
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("sessionId")
+	}
+	if sessionID == "" {
+		sessionID = "default"
+	}
+
 	// Ensure the session is running
-	err := h.terminalSvc.StartSession(h.workspaceSvc.ActiveWorkspaceDir())
+	err := h.terminalSvc.StartSessionID(sessionID, h.workspaceSvc.ActiveWorkspaceDir())
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	ch := make(chan []byte, 100)
-	h.terminalSvc.RegisterClient(ch)
-	defer h.terminalSvc.UnregisterClient(ch)
+	h.terminalSvc.RegisterClientSession(sessionID, ch)
+	defer h.terminalSvc.UnregisterClientSession(sessionID, ch)
 
 	// Flush initial headers
 	flusher.Flush()
@@ -1283,17 +1291,32 @@ func (h *Handler) HandleTerminalInput(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Data string `json:"data"`
+		SessionID    string `json:"session_id"`
+		SessionIDAlt string `json:"sessionId"`
+		Data         string `json:"data"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Ensure terminal session is started if not running
-	_ = h.terminalSvc.StartSession(h.workspaceSvc.ActiveWorkspaceDir())
+	sessionID := req.SessionID
+	if sessionID == "" {
+		sessionID = req.SessionIDAlt
+	}
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("session_id")
+	}
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("sessionId")
+	}
+	if sessionID == "" {
+		sessionID = "default"
+	}
 
-	err := h.terminalSvc.WriteInput(req.Data)
+	_ = h.terminalSvc.StartSessionID(sessionID, h.workspaceSvc.ActiveWorkspaceDir())
+
+	err := h.terminalSvc.WriteInputSession(sessionID, req.Data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1360,6 +1383,11 @@ func (h *Handler) HandleTelegramConfigSave(w http.ResponseWriter, r *http.Reques
 
 // HandleTerminalResize updates winsize of active PTY terminal session
 func (h *Handler) HandleTerminalResize(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.URL.Query().Get("session_id")
+	if sessionID == "" {
+		sessionID = r.URL.Query().Get("sessionId")
+	}
+
 	colsStr := r.URL.Query().Get("cols")
 	rowsStr := r.URL.Query().Get("rows")
 
@@ -1378,8 +1406,37 @@ func (h *Handler) HandleTerminalResize(w http.ResponseWriter, r *http.Request) {
 
 	cols, _ := strconv.Atoi(colsStr)
 	rows, _ := strconv.Atoi(rowsStr)
+
+	if (cols == 0 || rows == 0 || sessionID == "") && r.Body != nil {
+		var req struct {
+			Cols         int    `json:"cols"`
+			Rows         int    `json:"rows"`
+			SessionID    string `json:"session_id"`
+			SessionIDAlt string `json:"sessionId"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err == nil {
+			if req.Cols > 0 {
+				cols = req.Cols
+			}
+			if req.Rows > 0 {
+				rows = req.Rows
+			}
+			if sessionID == "" {
+				if req.SessionID != "" {
+					sessionID = req.SessionID
+				} else if req.SessionIDAlt != "" {
+					sessionID = req.SessionIDAlt
+				}
+			}
+		}
+	}
+
+	if sessionID == "" {
+		sessionID = "default"
+	}
+
 	if cols > 0 && rows > 0 {
-		_ = h.terminalSvc.ResizeSession(cols, rows)
+		_ = h.terminalSvc.ResizeSessionID(sessionID, cols, rows)
 	}
 	w.WriteHeader(http.StatusOK)
 }

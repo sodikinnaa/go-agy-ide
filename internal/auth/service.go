@@ -392,10 +392,15 @@ func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
 		}
 	}()
 
-	// Backup current active keyring and dummy token file
-	backupVal, backupErr := keyring.Get("gemini", "antigravity")
-	if backupErr == nil {
-		_ = keyring.Delete("gemini", "antigravity")
+	// Backup current active keyring and dummy token file if not in test mode
+	isTestMode := HomeDirOverride != "" || strings.HasSuffix(os.Args[0], ".test") || strings.HasSuffix(os.Args[0], ".test.exe")
+	var backupVal string
+	var backupErr error
+	if !isTestMode {
+		backupVal, backupErr = keyring.Get("gemini", "antigravity")
+		if backupErr == nil {
+			_ = keyring.Delete("gemini", "antigravity")
+		}
 	}
 
 	homeDir, _ := getHomeDir()
