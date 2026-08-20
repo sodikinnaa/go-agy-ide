@@ -393,7 +393,7 @@
                     AGY Mobile
                 </h1>
                 <div onclick="openUpdateModal()" class="flex items-center space-x-1 cursor-pointer bg-brand-panel border border-brand-border px-1.5 py-0.5 rounded font-mono hover:bg-brand-border transition group" title="Info Update & Webhook">
-                    <span class="text-[10px] text-slate-400">v1.7.3</span>
+                    <span class="text-[10px] text-slate-400">v1.7.4</span>
                     <span id="update-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
                 </div>
             </div>
@@ -821,6 +821,26 @@
             };
         }
 
+        // Configure marked custom renderer to output copy/insert buttons on pre/code blocks
+        if (typeof marked !== 'undefined') {
+            const renderer = new marked.Renderer();
+            renderer.code = function(tokenOrCode, infoString, escaped) {
+                let code = typeof tokenOrCode === 'object' && tokenOrCode !== null ? tokenOrCode.text : tokenOrCode;
+                let lang = typeof tokenOrCode === 'object' && tokenOrCode !== null ? tokenOrCode.lang : infoString;
+                lang = (lang || '').match(/\S*/)[0];
+                
+                const escapedCode = (code || '')
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+
+                return `<pre class="relative group/pre my-2 rounded-lg bg-brand-dark p-3 overflow-x-auto code-font text-xs"><button type="button" class="copy-code-btn absolute top-2 right-2 px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[10px] opacity-80 hover:opacity-100 transition select-none">Copy</button><button type="button" class="insert-code-btn absolute top-2 right-16 px-2 py-1 bg-brand-600 text-white rounded text-[10px] opacity-80 hover:opacity-100 transition select-none">Insert</button><code class="${lang ? 'language-' + lang : ''}">${escapedCode}</code></pre>`;
+            };
+            marked.setOptions({ renderer: renderer, breaks: true, gfm: true });
+        }
+
         // State management
         let editorInstance = null;
         let activeFilePath = "";
@@ -848,8 +868,7 @@
                 mode: 'go',
                 tabSize: 4,
                 indentUnit: 4,
-                lineWrapping: true,
-                viewportMargin: Infinity
+                lineWrapping: true
             });
 
             editorInstance.on('change', () => {
@@ -859,10 +878,10 @@
                 }
             });
 
-            // Adjust Editor and Terminal Layout on Window Resize
+            // Adjust Editor and Terminal Layout on Window Resize (debounced)
             window.addEventListener('resize', () => {
                 if (editorInstance) editorInstance.refresh();
-                resizeTerminalToFit();
+                debouncedResizeTerminalToFit(null, 150);
             });
 
             // Initial refresh of workspace
@@ -912,6 +931,40 @@
                 };
                 chatSendBtn.addEventListener('mousedown', triggerChatSubmit);
                 chatSendBtn.addEventListener('touchstart', triggerChatSubmit);
+            }
+
+            // Event Delegation on chat-messages for copy and insert code buttons
+            const chatMessagesContainer = document.getElementById('chat-messages');
+            if (chatMessagesContainer) {
+                chatMessagesContainer.addEventListener('click', (e) => {
+                    const copyBtn = e.target.closest('.copy-code-btn, .copy-btn-added');
+                    if (copyBtn) {
+                        const pre = copyBtn.closest('pre');
+                        const codeEl = pre ? pre.querySelector('code') : null;
+                        const code = codeEl ? codeEl.innerText : (pre ? pre.innerText : '');
+                        if (code) {
+                            navigator.clipboard.writeText(code);
+                            const originalText = copyBtn.innerText;
+                            copyBtn.innerText = 'Copied!';
+                            setTimeout(() => {
+                                copyBtn.innerText = originalText || 'Copy';
+                            }, 1500);
+                        }
+                        return;
+                    }
+
+                    const insertBtn = e.target.closest('.insert-code-btn');
+                    if (insertBtn) {
+                        const pre = insertBtn.closest('pre');
+                        const codeEl = pre ? pre.querySelector('code') : null;
+                        const code = codeEl ? codeEl.innerText : (pre ? pre.innerText : '');
+                        if (code) {
+                            insertCode(code);
+                            switchTab('code');
+                        }
+                        return;
+                    }
+                });
             }
 
             // Set up responsive tabs
@@ -972,7 +1025,6 @@
                     if (!panel) return;
                     if (key === tab) {
                         panel.classList.remove('hidden', 'tab-content-enter');
-                        void panel.offsetWidth; // Trigger reflow for smooth animation
                         panel.classList.add('w-full', 'h-full', 'z-30', 'tab-content-enter');
                         panel.style.display = 'flex';
                     } else {
@@ -2072,34 +2124,6 @@
                 const cleanText = text.replace(/<!-- keep-alive -->/g, '');
                 const parsedText = formatToolSteps(cleanText);
                 contentEl.innerHTML = marked.parse(parsedText);
-                
-                // Add apply code buttons to code blocks
-                contentEl.querySelectorAll('pre code').forEach(codeEl => {
-                    const pre = codeEl.parentNode;
-                    pre.className = "relative group/pre my-2 rounded-lg bg-brand-dark p-3 overflow-x-auto code-font text-xs";
-                    
-                    const code = codeEl.innerText;
-                    
-                    const copyBtn = document.createElement('button');
-                    copyBtn.className = "absolute top-2 right-2 px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[10px] opacity-80 transition";
-                    copyBtn.innerText = "Copy";
-                    copyBtn.onclick = () => {
-                        navigator.clipboard.writeText(code);
-                        copyBtn.innerText = "Copied!";
-                        setTimeout(() => copyBtn.innerText = "Copy", 1500);
-                    };
-
-                    const applyBtn = document.createElement('button');
-                    applyBtn.className = "absolute top-2 right-16 px-2 py-1 bg-brand-600 text-white rounded text-[10px] opacity-80 hover:opacity-100 transition";
-                    applyBtn.innerText = "Insert";
-                    applyBtn.onclick = () => {
-                        insertCode(code);
-                        switchTab('code');
-                    };
-
-                    pre.appendChild(copyBtn);
-                    pre.appendChild(applyBtn);
-                });
             } else {
                 contentEl.innerText = text;
             }
@@ -2159,7 +2183,6 @@
             // Toggle buttons
             sendBtn.classList.add('hidden');
             stopBtn.classList.remove('hidden');
-            lucide.createIcons();
 
             // Create streaming response bubble
             const botBubble = appendChatMessage('bot', 'Connecting to Antigravity...');
@@ -2211,7 +2234,7 @@
                                 </div>
                             </div>
                         `;
-                        lucide.createIcons();
+                        if (typeof lucide !== 'undefined') lucide.createIcons({ root: contentEl });
                     }
                     return;
                 }
@@ -2228,7 +2251,7 @@
                     statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1.5 mb-2.5 bg-brand-dark/80 border border-brand-border/80 rounded-xl text-xs font-mono select-none transition-all duration-200 shadow-sm';
                     statusBanner.innerHTML = `
                         <div class="flex items-center space-x-2 min-w-0">
-                            <i class="live-status-icon w-3.5 h-3.5 animate-spin text-brand-accent shrink-0" data-lucide="loader-2"></i>
+                            <svg class="live-status-icon w-3.5 h-3.5 animate-spin text-brand-accent shrink-0" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                             <span class="live-status-text text-slate-300 truncate font-medium text-[11px]">🔌 Nyambungake menyang Antigravity Engine...</span>
                         </div>
                         <span class="live-status-timer text-[10px] text-amber-400 font-bold shrink-0 ml-2 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full font-mono">0.0s</span>
@@ -2237,7 +2260,6 @@
                     textContainer.className = 'chat-text-response space-y-2';
                     contentEl.appendChild(statusBanner);
                     contentEl.appendChild(textContainer);
-                    lucide.createIcons();
                 }
 
                 const startTime = Date.now();
@@ -2262,12 +2284,11 @@
                             statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] font-mono text-emerald-400/90 select-none transition-all';
                             statusBanner.innerHTML = `
                                 <div class="flex items-center space-x-2">
-                                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                                    <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
                                     <span class="font-medium">Proses rampung</span>
                                 </div>
                                 <span class="text-[10px] text-emerald-400/80 font-bold shrink-0 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
                             `;
-                            lucide.createIcons();
                         }
                     }, 3000);
                 };
@@ -2275,6 +2296,62 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder("utf-8");
                 let fullText = "";
+                let renderTimeoutId = null;
+                let lastRenderTime = 0;
+                const THROTTLE_MS = 60;
+
+                const renderStream = (force = false) => {
+                    const displayText = fullText.replace(/<!-- keep-alive -->/g, '');
+                    if (displayText.trim() !== "") {
+                        resetIdleTimer();
+                    }
+                    
+                    // Update realtime action status banner
+                    if (statusBanner) {
+                        const statusInfo = extractRealtimeStatus(displayText);
+                        const statusTextEl = statusBanner.querySelector('.live-status-text');
+                        const statusIconEl = statusBanner.querySelector('.live-status-icon');
+                        if (statusTextEl && statusTextEl.innerText !== statusInfo.action) {
+                            statusTextEl.innerText = statusInfo.action;
+                        }
+                        if (statusIconEl && statusInfo.icon !== lastIcon) {
+                            statusIconEl.setAttribute('data-lucide', statusInfo.icon);
+                            statusIconEl.className = `live-status-icon w-3.5 h-3.5 ${statusInfo.icon === 'loader-2' ? 'animate-spin' : ''} ${statusInfo.color} shrink-0`;
+                            lastIcon = statusInfo.icon;
+                            if (typeof lucide !== 'undefined') {
+                                lucide.createIcons({ root: statusBanner });
+                            }
+                        }
+                    }
+
+                    if (displayText.trim() !== "" && textContainer) {
+                        const chatContainer = document.getElementById('chat-messages');
+                        const isNearBottom = chatContainer ? ((chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight) < 80) : true;
+
+                        const parsedText = formatToolSteps(displayText);
+                        textContainer.innerHTML = marked.parse(parsedText);
+
+                        if (chatContainer && isNearBottom) {
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+                        }
+                    }
+                };
+
+                const scheduleRender = () => {
+                    const now = performance.now();
+                    const elapsed = now - lastRenderTime;
+
+                    if (elapsed >= THROTTLE_MS) {
+                        lastRenderTime = now;
+                        renderStream(false);
+                    } else if (!renderTimeoutId) {
+                        renderTimeoutId = setTimeout(() => {
+                            renderTimeoutId = null;
+                            lastRenderTime = performance.now();
+                            renderStream(false);
+                        }, THROTTLE_MS - elapsed);
+                    }
+                };
 
                 while (true) {
                     const { done, value } = await reader.read();
@@ -2285,64 +2362,14 @@
 
                     const chunk = decoder.decode(value, { stream: true });
                     fullText += chunk;
-                    
-                    let displayText = fullText.replace(/<!-- keep-alive -->/g, '');
-                    if (displayText.trim() !== "") {
-                        resetIdleTimer();
-                    }
-                    
-                    // Update realtime action status banner
-                    const statusInfo = extractRealtimeStatus(displayText);
-                    if (statusBanner) {
-                        const statusTextEl = statusBanner.querySelector('.live-status-text');
-                        const statusIconEl = statusBanner.querySelector('.live-status-icon');
-                        if (statusTextEl && statusTextEl.innerText !== statusInfo.action) {
-                            statusTextEl.innerText = statusInfo.action;
-                        }
-                        if (statusIconEl && statusInfo.icon !== lastIcon) {
-                            statusIconEl.setAttribute('data-lucide', statusInfo.icon);
-                            statusIconEl.className = `live-status-icon w-3.5 h-3.5 ${statusInfo.icon === 'loader-2' ? 'animate-spin' : ''} ${statusInfo.color} shrink-0`;
-                            lastIcon = statusInfo.icon;
-                            lucide.createIcons();
-                        }
-                    }
-
-                    if (displayText.trim() !== "") {
-                        let parsedText = formatToolSteps(displayText);
-                        if (textContainer) textContainer.innerHTML = marked.parse(parsedText);
-                    }
-
-                    // Add copy/apply buttons to dynamic pre/code blocks
-                    botBubble.querySelectorAll('pre code').forEach(codeEl => {
-                        const pre = codeEl.parentNode;
-                        if (!pre.querySelector('.copy-btn-added')) {
-                            pre.classList.add('relative', 'group/pre', 'my-2', 'rounded-lg', 'bg-brand-dark', 'p-3', 'overflow-x-auto', 'code-font', 'text-xs');
-                            const code = codeEl.innerText;
-                            
-                            const copyBtn = document.createElement('button');
-                            copyBtn.className = "copy-btn-added absolute top-2 right-2 px-2 py-1 bg-brand-panel border border-brand-border text-slate-400 hover:text-white rounded text-[10px] opacity-80 transition";
-                            copyBtn.innerText = "Copy";
-                            copyBtn.onclick = () => {
-                                navigator.clipboard.writeText(code);
-                                copyBtn.innerText = "Copied!";
-                                setTimeout(() => copyBtn.innerText = "Copy", 1500);
-                            };
-
-                            const applyBtn = document.createElement('button');
-                            applyBtn.className = "absolute top-2 right-16 px-2 py-1 bg-brand-600 text-white rounded text-[10px] opacity-80 hover:opacity-100 transition";
-                            applyBtn.innerText = "Insert";
-                            applyBtn.onclick = () => {
-                                insertCode(code);
-                                switchTab('code');
-                            };
-
-                            pre.appendChild(copyBtn);
-                            pre.appendChild(applyBtn);
-                        }
-                    });
-                    
-                    document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+                    scheduleRender();
                 }
+
+                if (renderTimeoutId) {
+                    clearTimeout(renderTimeoutId);
+                    renderTimeoutId = null;
+                }
+                renderStream(true);
 
                 if (thinkingInterval) {
                     clearInterval(thinkingInterval);
@@ -2432,18 +2459,17 @@
                             `;
                         }
                     }
-                    lucide.createIcons();
+                    if (typeof lucide !== 'undefined') lucide.createIcons({ root: botBubble });
                 } else {
                     if (statusBanner) {
                         statusBanner.className = 'live-chat-status-banner flex items-center justify-between px-3 py-1 mb-2 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-[11px] font-mono text-emerald-400/90 select-none transition-all';
                         statusBanner.innerHTML = `
                             <div class="flex items-center space-x-2">
-                                <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                                <svg class="w-3.5 h-3.5 text-emerald-400 shrink-0" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
                                 <span class="font-medium">Proses rampung</span>
                             </div>
                             <span class="text-[10px] text-emerald-400/80 font-bold shrink-0 ml-2 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full font-mono">${totalTime}s</span>
                         `;
-                        lucide.createIcons();
                     }
                 }
 
@@ -2495,6 +2521,7 @@
                 if (err.name === 'AbortError') {
                     const cEl = botBubble.querySelector('.chat-message-content');
                     if (cEl) cEl.innerHTML += `<div class="mt-2 text-xs text-yellow-500 font-semibold flex items-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5 mr-1"></i>Obrolan dimandhegake dening pangguna.</div>`;
+                    if (typeof lucide !== 'undefined') lucide.createIcons({ root: botBubble });
                 } else {
                     const cEl = botBubble.querySelector('.chat-message-content');
                     if (cEl) {
@@ -2508,7 +2535,7 @@
                             </div>` : '';
                         cEl.innerHTML = `<div class="text-red-400">Error: ${err.message}</div>${refreshHtml}`;
                         if (typeof lucide !== 'undefined') {
-                            lucide.createIcons();
+                            lucide.createIcons({ root: botBubble });
                         }
                     }
                 }
@@ -2519,7 +2546,6 @@
                 sendBtn.classList.remove('hidden');
                 stopBtn.classList.add('hidden');
                 activeChatAbortController = null;
-                lucide.createIcons();
             }
         }
 
@@ -2757,10 +2783,19 @@
             setTimeout(resizeTerminalToFit, 100);
         }
 
-        let fitAddon;
         let isTerminalStreaming = false;
-        let inputQueue = [];
-        let isSendingInput = false;
+        let terminalInputQueues = {};
+        let terminalInputInFlight = {};
+        let terminalInputTimers = {};
+        let terminalResizeTimeout = null;
+
+        function debouncedResizeTerminalToFit(sessionId = null, delay = 150) {
+            if (terminalResizeTimeout) clearTimeout(terminalResizeTimeout);
+            terminalResizeTimeout = setTimeout(() => {
+                terminalResizeTimeout = null;
+                resizeTerminalToFit(sessionId);
+            }, delay);
+        }
 
         function getCharDimensions() {
             if (term && term._core && term._core._renderService && term._core._renderService.dimensions) {
@@ -2824,16 +2859,16 @@
                     brightWhite: '#ffffff'
                 }
             });
+            let tabFitAddon = null;
             if (typeof FitAddon !== 'undefined') {
                 try {
-                    let fitAddon = null;
                     if (typeof FitAddon.FitAddon === 'function') {
-                        fitAddon = new FitAddon.FitAddon();
+                        tabFitAddon = new FitAddon.FitAddon();
                     } else if (typeof FitAddon === 'function') {
-                        fitAddon = new FitAddon();
+                        tabFitAddon = new FitAddon();
                     }
-                    if (fitAddon) {
-                        tabTerm.loadAddon(fitAddon);
+                    if (tabFitAddon) {
+                        tabTerm.loadAddon(tabFitAddon);
                     }
                 } catch (e) {
                     console.warn('Could not initialize FitAddon:', e);
@@ -2850,6 +2885,7 @@
                 id: tabId,
                 name: tabName,
                 term: tabTerm,
+                fitAddon: tabFitAddon,
                 container: tabContainer,
                 streamReader: null,
                 abortController: null,
@@ -2957,11 +2993,22 @@
             if (tabToClose.streamReader) {
                 try { tabToClose.streamReader.cancel(); } catch (e) {}
             }
+            if (tabToClose.fitAddon && typeof tabToClose.fitAddon.dispose === 'function') {
+                try { tabToClose.fitAddon.dispose(); } catch (e) {}
+            }
             if (tabToClose.term) {
                 try { tabToClose.term.dispose(); } catch (e) {}
             }
             if (tabToClose.container) {
                 tabToClose.container.remove();
+            }
+
+            // Cleanup queue and timers
+            delete terminalInputQueues[tabId];
+            delete terminalInputInFlight[tabId];
+            if (terminalInputTimers[tabId]) {
+                clearTimeout(terminalInputTimers[tabId]);
+                delete terminalInputTimers[tabId];
             }
 
             terminalTabs.splice(index, 1);
@@ -3026,6 +3073,20 @@
 
             const container = tabObj.container;
             if (!container || container.offsetParent === null) return;
+
+            if (tabObj.fitAddon && typeof tabObj.fitAddon.fit === 'function') {
+                try {
+                    tabObj.fitAddon.fit();
+                    const cols = tabObj.term.cols;
+                    const rows = tabObj.term.rows;
+                    if (cols > 10 && rows > 3) {
+                        fetch(`/api/terminal/resize?session_id=${encodeURIComponent(targetSessionId)}&cols=${cols}&rows=${rows}`).catch(() => {});
+                    }
+                    return;
+                } catch (e) {
+                    console.warn('fitAddon.fit() failed, using fallback resize', e);
+                }
+            }
 
             fallbackResize(container);
         }
@@ -3115,7 +3176,31 @@
             }
         }
 
-        async function sendTerminalInput(sessionIdOrData, dataParam) {
+        async function flushTerminalInputQueue(sessionId) {
+            if (!sessionId || terminalInputInFlight[sessionId]) return;
+            if (!terminalInputQueues[sessionId] || terminalInputQueues[sessionId].length === 0) return;
+
+            const payload = terminalInputQueues[sessionId];
+            terminalInputQueues[sessionId] = "";
+            terminalInputInFlight[sessionId] = true;
+
+            try {
+                await fetch('/api/terminal/input', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId, data: payload })
+                });
+            } catch (err) {
+                console.error('Failed to send terminal input:', err);
+            } finally {
+                terminalInputInFlight[sessionId] = false;
+                if (terminalInputQueues[sessionId] && terminalInputQueues[sessionId].length > 0) {
+                    flushTerminalInputQueue(sessionId);
+                }
+            }
+        }
+
+        function sendTerminalInput(sessionIdOrData, dataParam) {
             let sessionId = sessionIdOrData;
             let data = dataParam;
 
@@ -3128,16 +3213,23 @@
                 sessionId = activeTerminalTabId;
             }
 
-            if (!sessionId || data === undefined || data === null) return;
+            if (!sessionId || data === undefined || data === null || data === '') return;
 
-            try {
-                await fetch('/api/terminal/input', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sessionId, data: data })
-                });
-            } catch (err) {
-                console.error('Failed to send terminal input:', err);
+            if (!terminalInputQueues[sessionId]) {
+                terminalInputQueues[sessionId] = "";
+            }
+            terminalInputQueues[sessionId] += data;
+
+            if (terminalInputTimers[sessionId]) {
+                clearTimeout(terminalInputTimers[sessionId]);
+                terminalInputTimers[sessionId] = null;
+            }
+
+            if (!terminalInputInFlight[sessionId]) {
+                terminalInputTimers[sessionId] = setTimeout(() => {
+                    terminalInputTimers[sessionId] = null;
+                    flushTerminalInputQueue(sessionId);
+                }, 15);
             }
         }
 
@@ -4263,9 +4355,9 @@
 
             if (!releases || !Array.isArray(releases) || releases.length === 0) {
                 releases = [
+                    { tag_name: 'v1.7.4', prerelease: false },
                     { tag_name: 'v1.7.3', prerelease: false },
-                    { tag_name: 'v1.7.2', prerelease: false },
-                    { tag_name: 'v1.7.1', prerelease: false }
+                    { tag_name: 'v1.7.2', prerelease: false }
                 ];
             }
 
@@ -4286,8 +4378,8 @@
             const stableTags = releases.map(rel => rel.tag_name).filter(tag => /^v\d+(\.\d+)*$/.test(tag || ''));
             const latestStable = stableTags.sort(compareTags).pop();
             const latestTesting = testingTags.sort(compareTags).pop();
-            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.3');
-            const current = "v1.7.3";
+            const latest = (latestStable || latestTesting || releases?.[0]?.tag_name || 'v1.7.4');
+            const current = "v1.7.4";
 
             if (verDisplay) verDisplay.innerText = latest;
             if (releaseSelect) {
@@ -4889,7 +4981,7 @@
                 <div class="bg-brand-dark/40 border border-brand-border p-3 rounded-xl space-y-1.5">
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Versi Saiki:</span>
-                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.3</span>
+                        <span class="font-mono font-bold text-white bg-brand-border px-1.5 py-0.5 rounded text-[10px]">v1.7.4</span>
                     </div>
                     <div class="flex justify-between items-center">
                         <span class="text-slate-400 font-medium">Rilis GitHub Paling Anyar:</span>

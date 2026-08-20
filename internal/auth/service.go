@@ -21,6 +21,7 @@ import (
 
 type Service struct {
 	mu                     sync.RWMutex
+	cacheMu                sync.RWMutex
 	serverStartDir         string
 	secretPassword         string
 	wrapperAPIKey          string
@@ -31,21 +32,39 @@ type Service struct {
 	activeAuthCmd   *exec.Cmd
 	activeAuthStdin io.WriteCloser
 	activeAuthURL   string
+
+	// Cached auth check results with TTL
+	authCacheTTL              time.Duration
+	isAgyInstalledCache       bool
+	isAgyInstalledCacheTime   time.Time
+	oauthTokenExistsCache     bool
+	oauthTokenExistsCacheTime time.Time
 }
 
 func NewService(serverStartDir string) *Service {
 	s := &Service{
 		serverStartDir: serverStartDir,
+		authCacheTTL:   30 * time.Second,
 	}
 	s.LoadPassword()
 	s.LoadAPIKey()
 	return s
 }
 
+func (s *Service) InvalidateAuthCache() {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	s.isAgyInstalledCacheTime = time.Time{}
+	s.oauthTokenExistsCacheTime = time.Time{}
+	s.isAgyInstalledCache = false
+	s.oauthTokenExistsCache = false
+}
+
 func (s *Service) SetBypassDynamicAuthCheck(bypass bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.bypassDynamicAuthCheck = bypass
+	s.mu.Unlock()
+	s.InvalidateAuthCache()
 }
 
 func (s *Service) LoadPassword() {
@@ -266,6 +285,30 @@ func (s *Service) IsAgyInstalled() bool {
 		return true
 	}
 
+	ttl := s.authCacheTTL
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
+
+	s.cacheMu.RLock()
+	if !s.isAgyInstalledCacheTime.IsZero() && time.Since(s.isAgyInstalledCacheTime) < ttl {
+		cached := s.isAgyInstalledCache
+		s.cacheMu.RUnlock()
+		return cached
+	}
+	s.cacheMu.RUnlock()
+
+	installed := s.checkIsAgyInstalled()
+
+	s.cacheMu.Lock()
+	s.isAgyInstalledCache = installed
+	s.isAgyInstalledCacheTime = time.Now()
+	s.cacheMu.Unlock()
+
+	return installed
+}
+
+func (s *Service) checkIsAgyInstalled() bool {
 	if p := os.Getenv("AGY_PATH"); p != "" {
 		if _, err := os.Stat(p); err == nil {
 			return true
@@ -302,6 +345,33 @@ func (s *Service) CheckOAuthTokenExists() bool {
 		return true
 	}
 
+	ttl := s.authCacheTTL
+	if ttl <= 0 {
+		ttl = 30 * time.Second
+	}
+
+	s.cacheMu.RLock()
+	if s.oauthTokenExistsCache && !s.oauthTokenExistsCacheTime.IsZero() && time.Since(s.oauthTokenExistsCacheTime) < ttl {
+		s.cacheMu.RUnlock()
+		return true
+	}
+	s.cacheMu.RUnlock()
+
+	exists := s.checkOAuthTokenExistsUncached()
+
+	s.cacheMu.Lock()
+	s.oauthTokenExistsCache = exists
+	if exists {
+		s.oauthTokenExistsCacheTime = time.Now()
+	} else {
+		s.oauthTokenExistsCacheTime = time.Time{}
+	}
+	s.cacheMu.Unlock()
+
+	return exists
+}
+
+func (s *Service) checkOAuthTokenExistsUncached() bool {
 	// Google Antigravity requires the agy CLI to be installed
 	if !s.IsAgyInstalled() {
 		return false
@@ -384,6 +454,8 @@ func (s *Service) EnsureActiveAccountFromPool() bool {
 }
 
 func (s *Service) StartGoogleAuth(activeWorkspaceDir string) (string, error) {
+	s.InvalidateAuthCache()
+
 	s.mu.Lock()
 	locked := true
 	defer func() {
@@ -771,6 +843,7 @@ func (s *Service) saveTokenToPoolAndRestoreActive(newVal, backupVal string, back
 		}
 	}
 
+	s.InvalidateAuthCache()
 	return nil
 }
 
@@ -781,6 +854,7 @@ func (s *Service) Logout() {
 		_ = os.Remove(tokenPath)
 	}
 	s.ClearSession()
+	s.InvalidateAuthCache()
 }
 
 type SettingsStruct struct {
@@ -966,7 +1040,9 @@ func (s *Service) UpdateAccountStatus(email string, status string, errorMsg stri
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(path, outData, 0600)
+		writeErr := os.WriteFile(path, outData, 0600)
+		s.InvalidateAuthCache()
+		return writeErr
 	}
 	return nil
 }
@@ -1425,6 +1501,7 @@ func (s *Service) SyncCurrentAccountToPool() error {
 		})
 	}
 
+	s.InvalidateAuthCache()
 	return s.SaveAccountsPool(pool)
 }
 
@@ -1460,6 +1537,7 @@ func (s *Service) SwitchAccount(email string) error {
 			return fmt.Errorf("failed to write to keyring and token file fallback: %v (keyring err: %w)", fileErr, err)
 		}
 		log.Printf("[AUTH] Keyring write failed, fallback wrote real token to %s", tokenPath)
+		s.InvalidateAuthCache()
 		return nil
 	}
 
@@ -1471,6 +1549,7 @@ func (s *Service) SwitchAccount(email string) error {
 		_ = os.WriteFile(tokenPath, []byte(targetVal), 0600)
 	}
 
+	s.InvalidateAuthCache()
 	return nil
 }
 
@@ -1536,6 +1615,7 @@ func (s *Service) RotateToNextHealthyAccount(reason string) (string, bool, error
 		_ = os.WriteFile(tokenPath, []byte(targetVal), 0600)
 	}
 
+	s.InvalidateAuthCache()
 	log.Printf("[AUTH POOL ROTATE] Successfully rotated from '%s' to healthy account '%s' (reason: %s)", currentEmail, targetAccount.Email, reason)
 	return targetAccount.Email, true, nil
 }
@@ -1572,6 +1652,7 @@ func (s *Service) DeleteAccount(email string) error {
 		_ = keyring.Delete("gemini", "antigravity")
 	}
 
+	s.InvalidateAuthCache()
 	return nil
 }
 

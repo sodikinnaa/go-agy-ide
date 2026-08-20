@@ -393,39 +393,37 @@ func (s *Service) StartChat(ctx context.Context, req ChatRequest, activeWorkspac
 	cmd.Env = append(os.Environ(), "BROWSER=false", "DISPLAY=")
 
 	convID := req.Conversation
-	if convID != "" {
-		s.mu.Lock()
-		if oldCmd, exists := s.activeChatCmds[convID]; exists && oldCmd != nil && oldCmd.Process != nil {
-			_ = oldCmd.Process.Kill()
-		}
-		if oldCancel, exists := s.activeChatCancels[convID]; exists && oldCancel != nil {
-			oldCancel()
-		}
-		s.activeChatCmds[convID] = cmd
-		s.activeChatCancels[convID] = cmdCancel
-		s.mu.Unlock()
+	if convID == "" {
+		convID = fmt.Sprintf("chat-%d", time.Now().UnixNano())
 	}
+
+	s.mu.Lock()
+	if oldCmd, exists := s.activeChatCmds[convID]; exists && oldCmd != nil && oldCmd.Process != nil {
+		_ = oldCmd.Process.Kill()
+	}
+	if oldCancel, exists := s.activeChatCancels[convID]; exists && oldCancel != nil {
+		oldCancel()
+	}
+	s.activeChatCmds[convID] = cmd
+	s.activeChatCancels[convID] = cmdCancel
+	s.mu.Unlock()
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
-		if convID != "" {
-			s.mu.Lock()
-			delete(s.activeChatCmds, convID)
-			delete(s.activeChatCancels, convID)
-			s.mu.Unlock()
-		}
+		s.mu.Lock()
+		delete(s.activeChatCmds, convID)
+		delete(s.activeChatCancels, convID)
+		s.mu.Unlock()
 		cmdCancel()
 		return nil, nil, err
 	}
 	cmd.Stderr = cmd.Stdout
 
 	if err := cmd.Start(); err != nil {
-		if convID != "" {
-			s.mu.Lock()
-			delete(s.activeChatCmds, convID)
-			delete(s.activeChatCancels, convID)
-			s.mu.Unlock()
-		}
+		s.mu.Lock()
+		delete(s.activeChatCmds, convID)
+		delete(s.activeChatCancels, convID)
+		s.mu.Unlock()
 		cmdCancel()
 		return nil, nil, err
 	}
@@ -1095,6 +1093,44 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 	}
 
 	// 2. Load AGY-compatible context and raw transcript history.
+	type openAIDeltaToolCall struct {
+		Index    int    `json:"index"`
+		ID       string `json:"id,omitempty"`
+		Type     string `json:"type,omitempty"`
+		Function struct {
+			Name      string `json:"name,omitempty"`
+			Arguments string `json:"arguments,omitempty"`
+		} `json:"function"`
+	}
+
+	type openAIStreamChoice struct {
+		Index int `json:"index"`
+		Delta struct {
+			Role             string                `json:"role,omitempty"`
+			Content          string                `json:"content,omitempty"`
+			ReasoningContent string                `json:"reasoning_content,omitempty"`
+			Reasoning        string                `json:"reasoning,omitempty"`
+			ToolCalls        []openAIDeltaToolCall `json:"tool_calls,omitempty"`
+		} `json:"delta"`
+		Message struct {
+			Role             string           `json:"role,omitempty"`
+			Content          string           `json:"content,omitempty"`
+			ReasoningContent string           `json:"reasoning_content,omitempty"`
+			ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason,omitempty"`
+	}
+
+	type openAIStreamChunk struct {
+		ID      string               `json:"id,omitempty"`
+		Object  string               `json:"object,omitempty"`
+		Choices []openAIStreamChoice `json:"choices,omitempty"`
+		Error   *struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		} `json:"error,omitempty"`
+	}
+
 	type openAIResponse struct {
 		Choices []struct {
 			Message struct {
@@ -1167,7 +1203,7 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			bodyMap := map[string]any{
 				"model":    modelName,
 				"messages": messages,
-				"stream":   false,
+				"stream":   true,
 			}
 			if !req.IsPure {
 				bodyMap["tools"] = openAIToolDefinitions()
@@ -1184,6 +1220,7 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			}
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+			httpReq.Header.Set("Accept", "text/event-stream")
 
 			resp, err := s.httpClient.Do(httpReq)
 			if err != nil {
@@ -1191,19 +1228,214 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			}
 			defer resp.Body.Close()
 
-			bodyBytes, _ := io.ReadAll(resp.Body)
 			if resp.StatusCode != http.StatusOK {
+				bodyBytes, _ := io.ReadAll(resp.Body)
+				var errResp struct {
+					Error *struct {
+						Message string `json:"message"`
+						Type    string `json:"type"`
+					} `json:"error"`
+				}
+				if json.Unmarshal(bodyBytes, &errResp) == nil && errResp.Error != nil && errResp.Error.Message != "" {
+					return openAIResponse{}, fmt.Errorf("%s", errResp.Error.Message)
+				}
 				return openAIResponse{}, fmt.Errorf("API status %d: %s", resp.StatusCode, strings.TrimSpace(string(bodyBytes)))
 			}
 
-			var parsed openAIResponse
-			if err := json.Unmarshal(bodyBytes, &parsed); err != nil {
-				return openAIResponse{}, err
+			type streamToolAcc struct {
+				id   string
+				typ  string
+				name string
+				args strings.Builder
 			}
-			if parsed.Error != nil && parsed.Error.Message != "" {
-				return openAIResponse{}, fmt.Errorf("%s", parsed.Error.Message)
+			toolMap := make(map[int]*streamToolAcc)
+			var toolOrder []int
+
+			var roundContent strings.Builder
+			var roundThinking strings.Builder
+			thoughtHeaderWritten := false
+			thoughtEnded := false
+
+			reader := bufio.NewReader(resp.Body)
+			contentType := resp.Header.Get("Content-Type")
+			isEventStream := strings.Contains(contentType, "text/event-stream")
+
+			for {
+				line, readErr := reader.ReadString('\n')
+				if readErr != nil && readErr != io.EOF && len(line) == 0 {
+					return openAIResponse{}, readErr
+				}
+
+				trimmed := strings.TrimSpace(line)
+
+				// Fallback parsing: if not an event-stream and first content is non-SSE JSON
+				if !isEventStream && len(toolOrder) == 0 && roundContent.Len() == 0 && roundThinking.Len() == 0 && trimmed != "" {
+					if !strings.HasPrefix(trimmed, "data:") && !strings.HasPrefix(trimmed, ":") && !strings.HasPrefix(trimmed, "event:") {
+						rest, _ := io.ReadAll(reader)
+						fullBody := append([]byte(line), rest...)
+
+						var parsed openAIResponse
+						if parseErr := json.Unmarshal(fullBody, &parsed); parseErr == nil && len(parsed.Choices) > 0 {
+							msg := parsed.Choices[0].Message
+							if msg.ReasoningContent != "" {
+								_, _ = pw.Write([]byte("▸ Thought\n"))
+								for _, l := range strings.Split(msg.ReasoningContent, "\n") {
+									_, _ = pw.Write([]byte("  " + l + "\n"))
+								}
+								_, _ = pw.Write([]byte("\n"))
+							}
+							if msg.Content != "" {
+								_, _ = pw.Write([]byte(msg.Content))
+							}
+							return parsed, nil
+						} else if parsed.Error != nil && parsed.Error.Message != "" {
+							return openAIResponse{}, fmt.Errorf("%s", parsed.Error.Message)
+						}
+					}
+				}
+
+				if trimmed != "" {
+					if strings.HasPrefix(trimmed, ":") || strings.HasPrefix(trimmed, "event:") || strings.HasPrefix(trimmed, "id:") {
+						if readErr == io.EOF {
+							break
+						}
+						continue
+					}
+
+					payload := trimmed
+					if strings.HasPrefix(trimmed, "data:") {
+						payload = strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+					}
+
+					if payload == "[DONE]" {
+						break
+					}
+
+					if strings.HasPrefix(payload, "{") {
+						var chunk openAIStreamChunk
+						if unmarshalErr := json.Unmarshal([]byte(payload), &chunk); unmarshalErr == nil {
+							if chunk.Error != nil && chunk.Error.Message != "" {
+								return openAIResponse{}, fmt.Errorf("%s", chunk.Error.Message)
+							}
+
+							if len(chunk.Choices) > 0 {
+								choice := chunk.Choices[0]
+
+								// Reasoning / Thinking delta
+								reasoning := choice.Delta.ReasoningContent
+								if reasoning == "" {
+									reasoning = choice.Delta.Reasoning
+								}
+								if reasoning == "" && choice.Message.ReasoningContent != "" {
+									reasoning = choice.Message.ReasoningContent
+								}
+								if reasoning != "" {
+									if !thoughtHeaderWritten {
+										_, _ = pw.Write([]byte("▸ Thought\n  "))
+										thoughtHeaderWritten = true
+									}
+									roundThinking.WriteString(reasoning)
+									formatted := strings.ReplaceAll(reasoning, "\n", "\n  ")
+									_, _ = pw.Write([]byte(formatted))
+								}
+
+								// Content delta
+								content := choice.Delta.Content
+								if content == "" && choice.Message.Content != "" {
+									content = choice.Message.Content
+								}
+								if content != "" {
+									if thoughtHeaderWritten && !thoughtEnded {
+										thoughtEnded = true
+										_, _ = pw.Write([]byte("\n\n"))
+									}
+									roundContent.WriteString(content)
+									_, _ = pw.Write([]byte(content))
+								}
+
+								// Tool calls delta
+								for _, tc := range choice.Delta.ToolCalls {
+									idx := tc.Index
+									acc, exists := toolMap[idx]
+									if !exists {
+										acc = &streamToolAcc{}
+										toolMap[idx] = acc
+										toolOrder = append(toolOrder, idx)
+									}
+									if tc.ID != "" {
+										acc.id = tc.ID
+									}
+									if tc.Type != "" {
+										acc.typ = tc.Type
+									}
+									if tc.Function.Name != "" {
+										acc.name = tc.Function.Name
+									}
+									if tc.Function.Arguments != "" {
+										acc.args.WriteString(tc.Function.Arguments)
+									}
+								}
+
+								// Fallback tool calls message
+								for _, tc := range choice.Message.ToolCalls {
+									idx := len(toolOrder)
+									acc := &streamToolAcc{
+										id:   tc.ID,
+										typ:  tc.Type,
+										name: tc.Function.Name,
+									}
+									acc.args.WriteString(tc.Function.Arguments)
+									toolMap[idx] = acc
+									toolOrder = append(toolOrder, idx)
+								}
+							}
+						}
+					}
+				}
+
+				if readErr != nil {
+					if readErr == io.EOF {
+						break
+					}
+					return openAIResponse{}, readErr
+				}
 			}
-			return parsed, nil
+
+			if thoughtHeaderWritten && !thoughtEnded {
+				_, _ = pw.Write([]byte("\n\n"))
+			}
+
+			var finalToolCalls []openAIToolCall
+			for _, idx := range toolOrder {
+				acc := toolMap[idx]
+				if acc != nil {
+					finalToolCalls = append(finalToolCalls, openAIToolCall{
+						ID:   acc.id,
+						Type: acc.typ,
+						Function: openAIFunctionCall{
+							Name:      acc.name,
+							Arguments: acc.args.String(),
+						},
+					})
+				}
+			}
+
+			var res openAIResponse
+			res.Choices = make([]struct {
+				Message struct {
+					Role             string           `json:"role"`
+					Content          string           `json:"content"`
+					ReasoningContent string           `json:"reasoning_content"`
+					ToolCalls        []openAIToolCall `json:"tool_calls"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}, 1)
+			res.Choices[0].Message.Role = "assistant"
+			res.Choices[0].Message.Content = roundContent.String()
+			res.Choices[0].Message.ReasoningContent = roundThinking.String()
+			res.Choices[0].Message.ToolCalls = finalToolCalls
+
+			return res, nil
 		}
 
 		for round := 0; round < maxToolRounds; round++ {
@@ -1223,21 +1455,15 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			msg := parsed.Choices[0].Message
 			if msg.ReasoningContent != "" {
 				accumulatedThinking.WriteString(msg.ReasoningContent)
-				_, _ = pw.Write([]byte("▸ Thought\n"))
-				for _, l := range strings.Split(msg.ReasoningContent, "\n") {
-					_, _ = pw.Write([]byte("  " + l + "\n"))
-				}
-				_, _ = pw.Write([]byte("\n"))
+			}
+			if msg.Content != "" {
+				accumulatedContent.WriteString(msg.Content)
 			}
 
 			assistantMsg := openAIMessage{Role: "assistant", Content: msg.Content, ToolCalls: msg.ToolCalls}
 			messages = append(messages, assistantMsg)
 
 			if len(msg.ToolCalls) == 0 {
-				if msg.Content != "" {
-					accumulatedContent.WriteString(msg.Content)
-					_, _ = pw.Write([]byte(msg.Content))
-				}
 				break
 			}
 
@@ -1266,7 +1492,7 @@ func (s *Service) StartOpenAIChat(ctx context.Context, req *ChatRequest, activeW
 			}
 		}
 
-		if strings.TrimSpace(accumulatedContent.String()) == "" {
+		if strings.TrimSpace(accumulatedContent.String()) == "" && len(transcriptTools) == 0 {
 			_, _ = pw.Write([]byte("\n[OpenAI-compatible warning] Model mandheg tanpa final answer sawise tool execution.\n"))
 		}
 

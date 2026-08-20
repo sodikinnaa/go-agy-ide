@@ -43,9 +43,19 @@ type TerminalSession struct {
 	history   []byte
 }
 
+type openAIModelsCacheEntry struct {
+	models   []string
+	cachedAt time.Time
+}
+
 type Service struct {
-	sessions map[string]*TerminalSession
-	mu       sync.RWMutex
+	sessions            map[string]*TerminalSession
+	mu                  sync.RWMutex
+	modelsMu            sync.RWMutex
+	modelsListCache     []string
+	modelsListCacheTime time.Time
+	openAIModelsCache   map[string]openAIModelsCacheEntry
+	modelsCacheTTL      time.Duration
 }
 
 type OpenAISettings struct {
@@ -59,10 +69,20 @@ type OpenAISettings struct {
 
 func NewService() *Service {
 	s := &Service{
-		sessions: make(map[string]*TerminalSession),
+		sessions:          make(map[string]*TerminalSession),
+		openAIModelsCache: make(map[string]openAIModelsCacheEntry),
+		modelsCacheTTL:    5 * time.Minute,
 	}
 	_, _ = s.CreateSession("default")
 	return s
+}
+
+func (s *Service) InvalidateModelsCache() {
+	s.modelsMu.Lock()
+	defer s.modelsMu.Unlock()
+	s.modelsListCache = nil
+	s.modelsListCacheTime = time.Time{}
+	s.openAIModelsCache = make(map[string]openAIModelsCacheEntry)
 }
 
 func (s *Service) CreateSession(id string) (*TerminalSession, error) {
@@ -456,8 +476,6 @@ func (ts *TerminalSession) UnregisterClient(ch chan []byte) {
 
 func (ts *TerminalSession) Broadcast(data []byte) {
 	ts.clientMux.Lock()
-	defer ts.clientMux.Unlock()
-
 	ts.history = append(ts.history, data...)
 
 	// Maintain clean buffer history up to 65KB
@@ -466,14 +484,33 @@ func (ts *TerminalSession) Broadcast(data []byte) {
 		targetCut := len(ts.history) - maxHistory
 		cut := findNextSafeBoundary(ts.history, targetCut)
 		if cut < len(ts.history) {
-			ts.history = ts.history[cut:]
+			if cap(ts.history) > maxHistory*2 {
+				newHist := make([]byte, len(ts.history)-cut, maxHistory+4096)
+				copy(newHist, ts.history[cut:])
+				ts.history = newHist
+			} else {
+				ts.history = ts.history[cut:]
+			}
 		} else {
 			ts.history = ts.history[len(ts.history)-maxHistory:]
 			ts.history = bytes.ToValidUTF8(ts.history, nil)
 		}
 	}
 
+	clientCount := len(ts.clients)
+	if clientCount == 0 {
+		ts.clientMux.Unlock()
+		return
+	}
+
+	// Snapshot active clients to avoid holding clientMux during channel delivery
+	clients := make([]chan []byte, 0, clientCount)
 	for ch := range ts.clients {
+		clients = append(clients, ch)
+	}
+	ts.clientMux.Unlock()
+
+	for _, ch := range clients {
 		select {
 		case ch <- data:
 		default:
@@ -540,7 +577,11 @@ func isSafeBoundary(buf []byte, cut int) (bool, int) {
 	window := buf[start:cut]
 	if lastESC := bytes.LastIndexByte(window, 0x1b); lastESC >= 0 {
 		escPos := start + lastESC
-		sub := buf[escPos:]
+		maxEnd := escPos + 128
+		if maxEnd > len(buf) {
+			maxEnd = len(buf)
+		}
+		sub := buf[escPos:maxEnd]
 		loc := ansiRegex.FindIndex(sub)
 		if loc == nil {
 			return false, escPos
@@ -795,6 +836,8 @@ func (s *Service) GetOpenAISettings(fetchModels bool) OpenAISettings {
 }
 
 func (s *Service) SaveOpenAISettings(apiKey, apiBase, models string, clearAPIKey bool) error {
+	s.InvalidateModelsCache()
+
 	apiKey = strings.TrimSpace(apiKey)
 	apiBase = strings.TrimSpace(apiBase)
 	models = strings.TrimSpace(models)
@@ -887,6 +930,25 @@ func (s *Service) FetchOpenAIModels(apiKey, apiBase string) ([]string, error) {
 		return nil, fmt.Errorf("OPENAI_API_KEY is not configured")
 	}
 
+	ttl := s.modelsCacheTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+	cacheKey := apiKey + "|" + apiBase
+
+	s.modelsMu.RLock()
+	if s.openAIModelsCache != nil {
+		if entry, ok := s.openAIModelsCache[cacheKey]; ok {
+			if !entry.cachedAt.IsZero() && time.Since(entry.cachedAt) < ttl && len(entry.models) > 0 {
+				res := make([]string, len(entry.models))
+				copy(res, entry.models)
+				s.modelsMu.RUnlock()
+				return res, nil
+			}
+		}
+	}
+	s.modelsMu.RUnlock()
+
 	url := strings.TrimSuffix(apiBase, "/") + "/models"
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -922,6 +984,21 @@ func (s *Service) FetchOpenAIModels(apiKey, apiBase string) ([]string, error) {
 			models = append(models, "openai/"+id)
 		}
 	}
+
+	if len(models) > 0 {
+		s.modelsMu.Lock()
+		if s.openAIModelsCache == nil {
+			s.openAIModelsCache = make(map[string]openAIModelsCacheEntry)
+		}
+		cachedModels := make([]string, len(models))
+		copy(cachedModels, models)
+		s.openAIModelsCache[cacheKey] = openAIModelsCacheEntry{
+			models:   cachedModels,
+			cachedAt: time.Now(),
+		}
+		s.modelsMu.Unlock()
+	}
+
 	return models, nil
 }
 
@@ -934,6 +1011,20 @@ func getHomeDir() (string, error) {
 
 // GetModelsList fetches available models from agy CLI or falls back to defaults
 func (s *Service) GetModelsList() ([]string, error) {
+	ttl := s.modelsCacheTTL
+	if ttl <= 0 {
+		ttl = 5 * time.Minute
+	}
+
+	s.modelsMu.RLock()
+	if len(s.modelsListCache) > 0 && !s.modelsListCacheTime.IsZero() && time.Since(s.modelsListCacheTime) < ttl {
+		res := make([]string, len(s.modelsListCache))
+		copy(res, s.modelsListCache)
+		s.modelsMu.RUnlock()
+		return res, nil
+	}
+	s.modelsMu.RUnlock()
+
 	var models []string
 
 	hasToken := false
@@ -1039,6 +1130,14 @@ func (s *Service) GetModelsList() ([]string, error) {
 				"openai/deepseek-reasoner",
 			)
 		}
+	}
+
+	if len(models) > 0 {
+		s.modelsMu.Lock()
+		s.modelsListCache = make([]string, len(models))
+		copy(s.modelsListCache, models)
+		s.modelsListCacheTime = time.Now()
+		s.modelsMu.Unlock()
 	}
 
 	return models, nil

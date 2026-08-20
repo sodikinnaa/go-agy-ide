@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const AppVersion = "v1.7.3"
+const AppVersion = "v1.7.4"
 
 var versionRegex = regexp.MustCompile(`v1\.\d+\.\d+`)
 
@@ -662,7 +662,7 @@ func (h *Handler) HandleChatStream(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
-	dataChan := make(chan []byte)
+	dataChan := make(chan []byte, 64)
 	errChan := make(chan error)
 
 	go func() {
